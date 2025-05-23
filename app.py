@@ -1,4 +1,6 @@
 # app.py
+import os
+API_TOKEN = os.getenv("API_TOKEN")
 import streamlit as st
 import pandas as pd
 import requests
@@ -7,8 +9,6 @@ import folium
 from streamlit_folium import folium_static
 
 # === CONFIGURE ===
-import os
-API_TOKEN = os.getenv("API_TOKEN")
 SOIL_API_URL = "https://farmerdb.kalro.org/api/SoilData/legacy/county"
 AGRODEALER_API_URL = "https://farmerdb.kalro.org/api/SoilData/agrodealers"
 
