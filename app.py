@@ -1,6 +1,4 @@
 # app.py
-import os
-API_TOKEN = os.getenv("API_TOKEN")
 import streamlit as st
 import pandas as pd
 import requests
@@ -9,6 +7,7 @@ import folium
 from streamlit_folium import folium_static
 
 # === CONFIGURE ===
+API_TOKEN = "KLRDg3ElBVveVghcN61aScAJevKMgofJF7CWcsVwG2mYt0mUQF63DdB0n6OHqOo9WYCilH7bjJ6s9sIc4zT9zzeCyPXhvytRL4wMAtbV5fRxnAmLFtEI9KXO5tvnu0Pm3rwhAfx5tXGiQOKEm98U2lGTZOIVav2hRtGwsU8SrzUPpZA6CNSNCGkCNp3sndYsrAqeme9xsqFGNEla2PBgjZ0ertc6j8nzCVzUQ8gX2T9hFnR8SoKRA7eyRMHRMDrn"
 SOIL_API_URL = "https://farmerdb.kalro.org/api/SoilData/legacy/county"
 AGRODEALER_API_URL = "https://farmerdb.kalro.org/api/SoilData/agrodealers"
 
