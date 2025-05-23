@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 import json
 from datetime import datetime
+import logging
 
 # === CONFIGURE ===
 API_TOKEN = "KLRDg3ElBVveVghcN61aScAJevKMgofJF7CWcsVwG2mYt0mUQF63DdB0n6OHqOo9WYCilH7bjJ6s9sIc4zT9zzeCyPXhvytRL4wMAtbV5fRxnAmLFtEI9KXO5tvnu0Pm3rwhAfx5tXGiQOKEm98U2lGTZOIVav2hRtGwsU8SrzUPpZA6CNSNCGkCNp3sndYsrAqeme9xsqFGNEla2PBgjZ0ertc6j8nzCVzUQ8gX2T9hFnR8SoKRA7eyRMHRMDrn"
@@ -16,6 +17,10 @@ SOIL_API_URL = "https://farmerdb.kalro.org/api/SoilData/legacy/county"
 AGRODEALER_API_URL = "https://farmerdb.kalro.org/api/SoilData/agrodealers"
 WEATHER_API_KEY = "your_openweather_api_key"  # Replace with your OpenWeatherMap API key
 WEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather"
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # === TRANSLATIONS DICTIONARY ===
 translations = {
@@ -49,7 +54,8 @@ translations = {
         "rec_boron": "Apply **borax** (1–2 kg/ha) for boron deficiency.",
         "rec_organic": "Apply **compost/manure (5–10 tons/ha)** or **Mazao Organic** to boost organic matter.",
         "rec_salinity": "Implement leaching with irrigation and use **Ammonium Sulphate** to manage high salinity.",
-        "weather_warning": "Avoid top-dressing fertilizers due to high precipitation ({} mm). Wait for drier conditions."
+        "weather_warning": "Avoid top-dressing fertilizers due to high precipitation ({} mm). Wait for drier conditions.",
+        "model_error": "Model training failed. Using threshold-based recommendations."
     },
     "sw": {
         "title": "SoilSync AI: Mapendekezo ya Mbolea ya Usahihi kwa Mahindi",
@@ -81,12 +87,13 @@ translations = {
         "rec_boron": "Tumia **borax** (kg 1–2 kwa hekta) kwa upungufu wa boron.",
         "rec_organic": "Tumia **mbolea ya kikaboni/samadi (tani 5–10 kwa hekta)** au **Mazao Organic** kuongeza vitu vya kikaboni.",
         "rec_salinity": "Tekeleza uchukuzi wa maji na umwagiliaji na tumia **Ammonium Sulphate** kushughulikia chumvi nyingi.",
-        "weather_warning": "Epuka kurutubisha juu kwa sababu ya mvua nyingi ({} mm). Subiri hali ya hewa kavu."
+        "weather_warning": "Epuka kurutubisha juu kwa sababu ya mvua nyingi ({} mm). Subiri hali ya hewa kavu.",
+        "model_error": "Ufundishaji wa modeli umeshindwa. Tumia mapendekezo ya msingi wa kizingiti."
     }
 }
 
 # === FETCH WEATHER DATA FUNCTION ===
-def fetch_weather_data(lat=1.0167, lon=35.0023):  # Kitale coordinates for Trans Nzoia
+def fetch_weather_data(lat=1.0167, lon=35.0023):  # Kitale coordinates
     url = f"{WEATHER_API_URL}?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
     try:
         response = requests.get(url)
@@ -96,26 +103,32 @@ def fetch_weather_data(lat=1.0167, lon=35.0023):  # Kitale coordinates for Trans
         precipitation = data.get("rain", {}).get("1h", 0)  # Rainfall in last hour (mm)
         description = data["weather"][0]["description"]
         return {"temp": temp, "precipitation": precipitation, "description": description}
-    except:
+    except Exception as e:
+        logger.error(f"Weather API error: {e}")
         return None
 
 # === TRAIN RANDOM FOREST MODEL ===
 def train_soil_model(soil_data):
     if soil_data is None or soil_data.empty:
-        return None, None
+        logger.warning("Soil data is None or empty")
+        return None, None, []
     features = ["soil_pH", "total_Nitrogen_percent_", "phosphorus_Olsen_ppm", "potassium_meq_percent_", "zinc_ppm", "boron_ppm"]
     features = [f for f in features if f in soil_data.columns]
     if not features:
-        return None, None
+        logger.warning("No valid features in soil data")
+        return None, None, []
     X = soil_data[features].dropna()
-    # Create synthetic fertility labels (low, medium, high) based on thresholds
+    if X.empty:
+        logger.warning("No data after dropping NaN values")
+        return None, None, features
+    # Create synthetic fertility labels
     y = []
     for _, row in X.iterrows():
         score = (
-            (row["soil_pH"] >= 5.5 and row["soil_pH"] <= 7.0) * 1 +
-            (row["total_Nitrogen_percent_"] >= 0.2) * 1 +
-            (row["phosphorus_Olsen_ppm"] >= 15) * 1 +
-            (row["potassium_meq_percent_"] >= 0.2) * 1
+            (row.get("soil_pH", 7.0) >= 5.5 and row.get("soil_pH", 7.0) <= 7.0) * 1 +
+            (row.get("total_Nitrogen_percent_", 0.3) >= 0.2) * 1 +
+            (row.get("phosphorus_Olsen_ppm", 20) >= 15) * 1 +
+            (row.get("potassium_meq_percent_", 0.3) >= 0.2) * 1
         )
         if score >= 3:
             y.append("high")
@@ -124,23 +137,33 @@ def train_soil_model(soil_data):
         else:
             y.append("low")
     if len(set(y)) < 2:
-        return None, None
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_scaled, y)
-    return model, scaler, features
+        logger.warning("Single-class labels detected")
+        return None, None, features
+    try:
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X_scaled, y)
+        logger.info("Model trained successfully")
+        return model, scaler, features
+    except Exception as e:
+        logger.error(f"Model training failed: {e}")
+        return None, None, features
 
 # === PREDICT SOIL FERTILITY ===
 def predict_soil_fertility(model, scaler, features, input_data):
-    if model is None or scaler is None:
+    if model is None or scaler is None or not features:
         return None, None
-    input_df = pd.DataFrame([input_data], columns=features)
-    input_scaled = scaler.transform(input_df)
-    prediction = model.predict(input_scaled)[0]
-    importance = model.feature_importances_
-    explanation = {f: i for f, i in zip(features, importance)}
-    return prediction, explanation
+    try:
+        input_df = pd.DataFrame([input_data], columns=features)
+        input_scaled = scaler.transform(input_df)
+        prediction = model.predict(input_scaled)[0]
+        importance = model.feature_importances_
+        explanation = {f: i for f, i in zip(features, importance)}
+        return prediction, explanation
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+        return None, None
 
 # === FETCH SOIL DATA FUNCTION ===
 def fetch_soil_data(county_name, crop="maize"):
@@ -158,9 +181,9 @@ def fetch_soil_data(county_name, crop="maize"):
             "zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm", "crop"
         ]
         available_columns = [col for col in relevant_columns if col in df.columns]
-        df_filtered = df[available_columns]
+        df_filtered = df[available_columns].copy()  # Create a copy to avoid SettingWithCopyWarning
         if "crop" in df_filtered.columns:
-            df_filtered["crop"] = df_filtered["crop"].astype(str)
+            df_filtered.loc[:, "crop"] = df_filtered["crop"].astype(str)  # Use .loc for assignment
             maize_mask = df_filtered["crop"].str.lower().str.contains(crop.lower(), na=False)
             df_filtered = df_filtered[maize_mask]
         core_params = [
@@ -171,13 +194,14 @@ def fetch_soil_data(county_name, crop="maize"):
         df_filtered = df_filtered.dropna(subset=core_params, how='any')
         numeric_cols = [col for col in core_params + ["zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm"] if col in df_filtered.columns]
         for col in numeric_cols:
-            df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
+            df_filtered.loc[:, col] = pd.to_numeric(df_filtered[col], errors='coerce')
         df_filtered = df_filtered.rename(columns={
             "county": "County", "constituency": "Constituency", "ward": "Ward",
             "latitude": "Latitude", "longitude": "Longitude"
         })
         return df_filtered
     except Exception as e:
+        logger.error(f"Soil data fetch error: {e}")
         st.error(translations["en"]["error_data"])
         return None
 
@@ -230,17 +254,19 @@ def merge_soil_agrodealer_data(soil_df, dealer_df):
             soil_df, dealer_df, on=["County", "Constituency", "Ward"],
             how="left", suffixes=("_soil", "_dealer")
         )
-        merged_df['Latitude'] = merged_df['Latitude_soil'].combine_first(merged_df['Latitude_dealer'])
-        merged_df['Longitude'] = merged_df['Longitude_soil'].combine_first(merged_df['Longitude_dealer'])
+        # Handle missing values explicitly to avoid FutureWarning
+        merged_df['Latitude'] = merged_df['Latitude_soil'].fillna(merged_df['Latitude_dealer'])
+        merged_df['Longitude'] = merged_df['Longitude_soil'].fillna(merged_df['Longitude_dealer'])
         merged_df = merged_df.drop(columns=['Latitude_soil', 'Longitude_soil', 'Latitude_dealer', 'Longitude_dealer'], errors='ignore')
         return merged_df
-    except:
+    except Exception as e:
+        logger.error(f"Merge error: {e}")
         return soil_df
 
 # === FERTILIZER RECOMMENDATION FUNCTION FOR FARMERS ===
 def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, weather_data, lang="en"):
     recommendations = []
-    if soil_data.empty:
+    if soil_data is None or soil_data.empty:
         return [translations[lang]["no_data"]]
     ward_data = soil_data[soil_data['Ward'] == ward]
     if ward_data.empty:
@@ -299,9 +325,9 @@ def get_fertilizer_recommendations_researcher(input_data, model, scaler, feature
     prediction, explanation = predict_soil_fertility(model, scaler, features, input_data)
     
     if prediction is None:
-        return ["Model unavailable. Use soil data thresholds."], "No model prediction available."
+        recommendations.append(translations[lang]["model_error"])
     
-    # Recommendations based on prediction and input
+    # Recommendations based on input
     if input_data.get("soil_pH", 7.0) < 5.5:
         recommendations.append(translations[lang]["rec_ph_acidic"].format(input_data["soil_pH"]))
     elif input_data.get("soil_pH", 7.0) > 7.0:
@@ -318,14 +344,14 @@ def get_fertilizer_recommendations_researcher(input_data, model, scaler, feature
         recommendations.append(translations[lang]["rec_boron"])
     
     # Explanation for farmer communication
-    advice = f"Soil fertility predicted as {prediction}. "
+    advice = "No model prediction available." if prediction is None else f"Soil fertility predicted as {prediction}. "
     if prediction == "low":
         advice += "Explain to the farmer that low soil fertility is due to deficiencies in: "
-        advice += ", ".join([f"{k} ({v:.2%})" for k, v in explanation.items() if v > 0.1])
+        advice += ", ".join([f"{k} ({v:.2%})" for k, v in (explanation or {}).items() if v > 0.1])
         advice += ". Recommend applying fertilizers as listed and improving soil management."
     elif prediction == "medium":
         advice += "Tell the farmer that soil fertility is moderate. Address specific deficiencies listed to boost yields."
-    else:
+    elif prediction == "high":
         advice += "Inform the farmer that soil is fertile but maintain nutrient balance with listed recommendations."
     
     return recommendations if recommendations else [translations[lang]["optimal_soil"]], advice
@@ -350,7 +376,7 @@ if 'model' not in st.session_state:
 if 'scaler' not in st.session_state:
     st.session_state.scaler = None
 if 'features' not in st.session_state:
-    st.session_state.features = None
+    st.session_state.features = []
 
 # Fetch Data Once
 if st.session_state.soil_data is None:
@@ -372,10 +398,7 @@ if st.session_state.soil_data is None:
     if st.session_state.soil_data is not None:
         st.session_state.merged_data = merge_soil_agrodealer_data(st.session_state.soil_data, st.session_state.dealer_data)
         # Train model
-        model, scaler, features = train_soil_model(st.session_state.soil_data)
-        st.session_state.model = model
-        st.session_state.scaler = scaler
-        st.session_state.features = features
+        st.session_state.model, st.session_state.scaler, st.session_state.features = train_soil_model(st.session_state.soil_data)
 
 # Farmer Interface
 if user_type == translations["en"]["farmer"]:
