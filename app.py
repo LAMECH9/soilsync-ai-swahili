@@ -26,7 +26,6 @@ translations = {
         "select_user_type": "Select User Type",
         "farmer": "Farmer",
         "researcher": "Researcher",
-        "extension_officer": "Extension Officer",
         "farmer_header": "Farmer-Friendly Recommendations",
         "farmer_instruction": "Select your ward and describe your crop's condition to get tailored fertilizer recommendations for maize farming in Trans Nzoia.",
         "select_ward": "Select Your Ward",
@@ -52,27 +51,18 @@ translations = {
         "rec_organic": "Apply **compost/manure (5–10 tons/ha)** or **Mazao Organic** to boost organic matter.",
         "rec_salinity": "Implement leaching with irrigation and use **Ammonium Sulphate** to manage high salinity.",
         "model_error": "Model training failed. Using threshold-based recommendations.",
-        "feedback_prompt": "How effective were the recommendations? (e.g., yield changes, issues)",
-        "feedback_thanks": "Thank you for your feedback!",
         "carbon_sequestration": "Estimated Carbon Sequestration: {:.2f} tons/ha/year",
         "yield_impact": "Estimated Yield Increase: {:.2f} tons/ha ({:.0f}%)",
         "fertilizer_savings": "Fertilizer Waste Reduction: {:.1f}%",
         "prediction_header": "Soil Fertility Predictions Across Wards",
         "param_stats": "Soil Parameter Statistics",
-        "feature_importance": "Feature Importance for Soil Fertility Prediction",
-        "extension_header": "Extension Officer: Farmer Advisory Services",
-        "extension_instruction": "Select a ward and review soil conditions or farmer-reported issues to provide simple, actionable advice for maize farming.",
-        "farmer_issues": "Farmer-Reported Issues",
-        "soil_summary": "Soil Condition Summary",
-        "extension_advice": "Advice for Farmer",
-        "extension_feedback": "Record Interaction Notes"
+        "feature_importance": "Feature Importance for Soil Fertility Prediction"
     },
     "sw": {
         "title": "SoilSync AI: Mapendekezo ya Mbolea ya Usahihi kwa Mahindi",
         "select_user_type": "Chagua Aina ya Mtumiaji",
         "farmer": "Mkulima",
         "researcher": "Mtafiti",
-        "extension_officer": "Afisa Ugani",
         "farmer_header": "Mapendekezo Yanayofaa Mkulima",
         "farmer_instruction": "Chagua wadi yako na elezea hali ya mazao yako ili kupata mapendekezo ya mbolea yanayofaa kwa kilimo cha mahindi huko Trans Nzoia.",
         "select_ward": "Chagua Wadi Yako",
@@ -98,20 +88,12 @@ translations = {
         "rec_organic": "Tumia **mbolea ya kikaboni/samadi (tani 5–10 kwa hekta)** au **Mazao Organic** kuongeza vitu vya kikaboni.",
         "rec_salinity": "Tekeleza uchukuzi wa maji na umwagiliaji na tumia **Ammonium Sulphate** kushughulikia chumvi nyingi.",
         "model_error": "Ufundishaji wa modeli umeshindwa. Tumia mapendekezo ya msingi wa kizingiti.",
-        "feedback_prompt": "Mapendekezo yalikuwa na ufanisi gani? (mfano, mabadiliko ya mavuno, matatizo)",
-        "feedback_thanks": "Asante kwa maoni yako!",
         "carbon_sequestration": "Makadirio ya Uchukuzi wa Kaboni: {:.2f} tani/ha/mwaka",
         "yield_impact": "Makadirio ya Ongezeko la Mavuno: {:.2f} tani/ha ({:.0f}%)",
         "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%",
         "prediction_header": "Mapendekezo ya Uzazi wa Udongo Katika Wadi",
         "param_stats": "Takwimu za Vigezo vya Udongo",
-        "feature_importance": "Umuhimu wa Vipengele kwa Utambuzi wa Uzazi wa Udongo",
-        "extension_header": "Afisa Ugani: Huduma za Ushauri kwa Wakulima",
-        "extension_instruction": "Chagua wadi na angalia hali ya udongo au masuala yaliyoripotiwa na mkulima ili kutoa ushauri rahisi na wa vitendo kwa kilimo cha mahindi.",
-        "farmer_issues": "Masuala Yaliyoripotiwa na Mkulima",
-        "soil_summary": "Muhtasari wa Hali ya Udongo",
-        "extension_advice": "Ushauri kwa Mkulima",
-        "extension_feedback": "Rekodi Maelezo ya Mwingiliano"
+        "feature_importance": "Umuhimu wa Vipengele kwa Utambuzi wa Uzazi wa Udongo"
     }
 }
 
@@ -141,8 +123,11 @@ def fetch_soil_data(county_name, crop="maize"):
         ]
         core_params = [col for col in core_params if col in df_filtered.columns]
         df_filtered = df_filtered.dropna(subset=core_params, how='any')
-        numeric_cols = [col for col in core_params + ["zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm"] if col in df_filtered.columns]
+        numeric_cols = [col for col in core_params + ["total_Org_Carbon_percent_", "zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm", "latitude", "longitude"] if col in df_filtered.columns]
         for col in numeric_cols:
+            if col == "total_Org_Carbon_percent_":
+                # Clean malformed strings (e.g., '1.481.48')
+                df_filtered[col] = df_filtered[col].apply(lambda x: x.split('.')[0] + '.' + x.split('.')[1][:2] if isinstance(x, str) and x.count('.') > 1 else x)
             df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
         df_filtered = df_filtered.rename(columns={
             "county": "County", "constituency": "Constituency", "ward": "Ward",
@@ -229,13 +214,11 @@ def train_soil_model(soil_data):
         logger.warning("No valid features in soil data")
         return None, None, []
     X = soil_data[features].copy()
-    # Impute missing values for optional features
-    for col in ["zinc_ppm", "boron_ppm"]:
-        if col in X.columns:
-            X[col] = X[col].fillna(X[col].mean())
-    X = X.dropna(subset=["soil_pH", "total_Nitrogen_percent_", "phosphorus_Olsen_ppm", "potassium_meq_percent_"])
+    # Impute missing values
+    for col in features:
+        X[col] = X[col].fillna(X[col].mean())
     if X.empty:
-        logger.warning("No data after dropping core NaN values")
+        logger.warning("No data after processing")
         return None, None, features
     y = []
     for _, row in X.iterrows():
@@ -271,7 +254,7 @@ def predict_soil_fertility(model, scaler, features, input_data):
         return None, None
     try:
         input_df = pd.DataFrame([input_data], columns=features)
-        for col in ["zinc_ppm", "boron_ppm"]:
+        for col in features:
             if col in input_df.columns and pd.isna(input_df[col].iloc[0]):
                 input_df[col] = input_df[col].fillna(input_df[col].mean())
         input_scaled = scaler.transform(input_df)
@@ -294,7 +277,7 @@ def predict_all_wards(soil_data, model, scaler, features):
         if ward_data.empty:
             continue
         avg_data = ward_data[features].mean().to_dict()
-        for col in ["zinc_ppm", "boron_ppm"]:
+        for col in features:
             if col in avg_data and pd.isna(avg_data[col]):
                 avg_data[col] = ward_data[col].mean() if not ward_data[col].isna().all() else 0
         prediction, _ = predict_soil_fertility(model, scaler, features, avg_data)
@@ -308,6 +291,8 @@ def estimate_carbon_sequestration(soil_data, ward):
     if ward_data.empty or 'total_Org_Carbon_percent_' not in ward_data.columns:
         return 0.0
     organic_carbon = ward_data["total_Org_Carbon_percent_"].mean()
+    if pd.isna(organic_carbon):
+        return 0.0
     sequestration_rate = organic_carbon * 0.58
     return sequestration_rate
 
@@ -409,77 +394,12 @@ def get_fertilizer_recommendations_researcher(input_data, model, scaler, feature
     
     return recommendations if recommendations else [translations[lang]["optimal_soil"]], advice, explanation
 
-# === FERTILIZER RECOMMENDATION FUNCTION FOR EXTENSION OFFICERS ===
-def get_fertilizer_recommendations_extension(soil_data, ward, crop_symptoms, lang="en"):
-    recommendations = []
-    advice = []
-    if soil_data is None or soil_data.empty:
-        return [translations[lang]["no_data"]], ["No soil data available to provide advice."]
-    
-    ward_data = soil_data[soil_data['Ward'] == ward]
-    if ward_data.empty:
-        ward_data = soil_data
-    avg_data = ward_data.mean(numeric_only=True)
-    
-    symptom_deficiencies = {
-        "Yellowing leaves": ["nitrogen", "zinc"],
-        "Stunted growth": ["nitrogen", "phosphorus", "potassium"],
-        "Poor flowering": ["phosphorus", "potassium"],
-        "Wilting": ["potassium", "organic"],
-        "Leaf spots": ["zinc", "boron"],
-        "Majani yanageuka manjano": ["nitrogen", "zinc"],
-        "Ukuaji umedumaa": ["nitrogen", "phosphorus", "potassium"],
-        "Maua duni": ["phosphorus", "potassium"],
-        "Kunyauka": ["potassium", "organic"],
-        "Madoa kwenye majani": ["zinc", "boron"]
-    }
-    
-    if 'soil_pH' in avg_data:
-        if avg_data['soil_pH'] < 5.5:
-            recommendations.append(translations[lang]["rec_ph_acidic"].format(avg_data['soil_pH']))
-            advice.append(f"The soil is too acidic (pH {avg_data['soil_pH']:.2f}). Advise the farmer to apply lime and avoid overuse of nitrogen fertilizers.")
-        elif avg_data['soil_pH'] > 7.0:
-            recommendations.append(translations[lang]["rec_ph_alkaline"].format(avg_data['soil_pH']))
-            advice.append(f"The soil is too alkaline (pH {avg_data['soil_pH']:.2f}). Suggest using Ammonium Sulphate and improving irrigation.")
-    
-    deficiencies = set()
-    for symptom in crop_symptoms:
-        deficiencies.update(symptom_deficiencies.get(symptom, []))
-    
-    if "nitrogen" in deficiencies or ('total_Nitrogen_percent_' in avg_data and avg_data['total_Nitrogen_percent_'] < 0.2):
-        recommendations.append(translations[lang]["rec_nitrogen"])
-        advice.append("Explain to the farmer that low nitrogen causes yellowing leaves and stunted growth. Show them how to apply DAP at planting and CAN for top-dressing.")
-    if "phosphorus" in deficiencies or ('phosphorus_Olsen_ppm' in avg_data and avg_data['phosphorus_Olsen_ppm'] < 15):
-        recommendations.append(translations[lang]["rec_phosphorus"])
-        advice.append("Low phosphorus leads to poor flowering. Demonstrate DAP or TSP application at planting and encourage soil testing.")
-    if "potassium" in deficiencies or ('potassium_meq_percent_' in avg_data and avg_data['potassium_meq_percent_'] < 0.2):
-        recommendations.append(translations[lang]["rec_potassium"])
-        advice.append("Potassium deficiency causes wilting. Advise using NPK fertilizers and check for water availability.")
-    if "zinc" in deficiencies or ('zinc_ppm' in avg_data and avg_data['zinc_ppm'] < 1):
-        recommendations.append(translations[lang]["rec_zinc"])
-        advice.append("Zinc deficiency shows as leaf spots. Recommend Mavuno Maize Fertilizer or zinc sulfate spray and explain its benefits.")
-    if "boron" in deficiencies or ('boron_ppm' in avg_data and avg_data['boron_ppm'] < 0.5):
-        recommendations.append(translations[lang]["rec_boron"])
-        advice.append("Boron deficiency affects leaf health. Suggest borax application and monitor crop response.")
-    if "organic" in deficiencies or ('total_Org_Carbon_percent_' in avg_data and avg_data['total_Org_Carbon_percent_'] < 1):
-        recommendations.append(translations[lang]["rec_organic"])
-        advice.append("Low organic matter reduces soil fertility. Encourage compost or manure use and explain long-term soil health benefits.")
-    if 'electr_Conductivity_mS_per_cm' in avg_data and avg_data['electr_Conductivity_mS_per_cm'] > 1:
-        recommendations.append(translations[lang]["rec_salinity"])
-        advice.append("High salinity harms crops. Advise the farmer to improve irrigation and drainage practices.")
-    
-    if not recommendations:
-        recommendations = [translations[lang]["optimal_soil"]]
-        advice.append("The soil is in good condition for maize. Advise the farmer to maintain current practices and monitor crop health.")
-    
-    return recommendations, advice
-
 # === STREAMLIT APP ===
 st.title(translations["en"]["title"])
 
 # Sidebar for User Type Selection
 user_type = st.sidebar.selectbox(translations["en"]["select_user_type"], 
-                                [translations["en"]["farmer"], translations["en"]["researcher"], translations["en"]["extension_officer"]], 
+                                [translations["en"]["farmer"], translations["en"]["researcher"]], 
                                 key="user_type")
 
 # Initialize Session State
@@ -502,19 +422,12 @@ if st.session_state.soil_data is None:
         st.session_state.soil_data = fetch_soil_data("Trans Nzoia", crop="maize")
     with st.spinner("Fetching agro-dealer data..."):
         trans_nzoia_units = [
-            {"constituency": "Kiminini", "ward": "Sirende"},
             {"constituency": "Kiminini", "ward": "Kiminini"},
-            {"constituency": "Kiminini", "ward": "Waitaluk"},
+            {"constituency": "Kiminini", "ward": "Sirende"},
             {"constituency": "Trans Nzoia East", "ward": "Chepsiro/Kiptoror"},
             {"constituency": "Trans Nzoia East", "ward": "Sitatunga"},
-            {"constituency": "Trans Nzoia East", "ward": "Kapsara"},
             {"constituency": "Kwanza", "ward": "Kapomboi"},
-            {"constituency": "Kwanza", "ward": "Kwanza"},
-            {"constituency": "Kwanza", "ward": "Keiyo"},
-            {"constituency": "Saboti", "ward": "Kinyoro"},
-            {"constituency": "Saboti", "ward": "Matisi"},
-            {"constituency": "Cherangany", "ward": "Sinyerere"},
-            {"constituency": "Cherangany", "ward": "Makutano"}
+            {"constituency": "Kwanza", "ward": "Kwanza"}
         ]
         constituencies = [unit["constituency"] for unit in trans_nzoia_units]
         wards = [unit["ward"] for unit in trans_nzoia_units]
@@ -533,8 +446,7 @@ if user_type == translations["en"]["farmer"]:
     st.write(translations[lang_code]["farmer_instruction"])
     
     wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else [
-        "Sirende", "Kiminini", "Waitaluk", "Chepsiro/Kiptoror", "Sitatunga", "Kapsara",
-        "Kapomboi", "Kwanza", "Keiyo", "Kinyoro", "Matisi", "Sinyerere", "Makutano"
+        "Kiminini", "Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"
     ]
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
@@ -583,15 +495,6 @@ if user_type == translations["en"]["farmer"]:
                 st_folium(m, width=700, height=500)
             else:
                 st.write(translations[lang_code]["dealers_none"])
-        
-        st.subheader("Provide Feedback")
-        with st.form("feedback_form"):
-            feedback = st.text_area(translations[lang_code]["feedback_prompt"])
-            submit_feedback = st.form_submit_button("Submit Feedback")
-            if submit_feedback and feedback:
-                with open("feedback.txt", "a") as f:
-                    f.write(f"{selected_ward},{feedback},{datetime.now()}\n")
-                st.success(translations[lang_code]["feedback_thanks"])
     else:
         st.error(translations[lang_code]["error_data"])
 
@@ -605,7 +508,6 @@ elif user_type == translations["en"]["researcher"]:
         selected_ward = st.selectbox("Select Ward for Analysis", wards)
         ward_data = st.session_state.merged_data[st.session_state.merged_data['Ward'] == selected_ward]
         
-        # Soil Parameter Input
         st.subheader("Input Soil Parameters")
         input_data = {}
         with st.form("soil_input_form"):
@@ -657,7 +559,6 @@ elif user_type == translations["en"]["researcher"]:
                 st.write("Feature Importance Chart")
                 st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
         
-        # Soil Parameter Statistics
         st.subheader(translations["en"]["param_stats"])
         key_params = [
             "soil_pH", "total_Nitrogen_percent_", "total_Org_Carbon_percent_",
@@ -699,7 +600,6 @@ elif user_type == translations["en"]["researcher"]:
                 st.write("Interactive Soil Parameter Chart")
                 st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
         
-        # Soil Fertility Predictions Across Wards
         st.subheader(translations["en"]["prediction_header"])
         predictions_df = predict_all_wards(st.session_state.merged_data, st.session_state.model, st.session_state.scaler, st.session_state.features)
         if not predictions_df.empty:
@@ -735,7 +635,6 @@ elif user_type == translations["en"]["researcher"]:
         else:
             st.write("No predictions available due to missing model or data.")
         
-        # Agro-Dealer Information
         st.subheader("Agro-Dealer Network")
         if st.session_state.dealer_data is not None:
             dealers = st.session_state.dealer_data[st.session_state.dealer_data['Ward'] == selected_ward]
@@ -753,99 +652,11 @@ elif user_type == translations["en"]["researcher"]:
             else:
                 st.write("No agro-dealers found for this ward.")
         
-        # Download Data
         st.subheader("Download Data")
         csv = ward_data.to_csv(index=False)
         st.download_button("Download Ward Soil Data", csv, f"{selected_ward}_soil_data.csv", "text/csv")
     else:
         st.error(translations["en"]["error_data"])
-
-# Extension Officer Interface
-elif user_type == translations["en"]["extension_officer"]:
-    lang = st.sidebar.selectbox(translations["en"]["select_language"], ["English", "Swahili"], key="language")
-    lang_code = {"English": "en", "Swahili": "sw"}[lang]
-    st.sidebar.write(translations[lang_code]["language_confirmation"])
-    
-    st.header(translations[lang_code]["extension_header"])
-    st.write(translations[lang_code]["extension_instruction"])
-    
-    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else [
-        "Sirende", "Kiminini", "Waitaluk", "Chepsiro/Kiptoror", "Sitatunga", "Kapsara",
-        "Kapomboi", "Kwanza", "Keiyo", "Kinyoro", "Matisi", "Sinyerere", "Makutano"
-    ]
-    selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
-    
-    st.subheader(translations[lang_code]["farmer_issues"])
-    crop_symptoms = st.multiselect(
-        "Select farmer-reported crop issues",
-        translations[lang_code]["crop_symptoms"],
-        help="Choose issues reported by the farmer about their maize crop."
-    )
-    
-    if st.session_state.merged_data is not None:
-        # Soil Summary
-        st.subheader(translations[lang_code]["soil_summary"])
-        ward_data = st.session_state.merged_data[st.session_state.merged_data['Ward'] == selected_ward]
-        key_params = [
-            "soil_pH", "total_Nitrogen_percent_", "phosphorus_Olsen_ppm",
-            "potassium_meq_percent_", "zinc_ppm", "boron_ppm",
-            "total_Org_Carbon_percent_", "electr_Conductivity_mS_per_cm"
-        ]
-        key_params = [col for col in key_params if col in ward_data.columns]
-        if key_params and not ward_data.empty:
-            summary = ward_data[key_params].mean(numeric_only=True)
-            st.write("Average Soil Conditions:")
-            for param, value in summary.items():
-                st.write(f"- {param}: {value:.2f}")
-        else:
-            st.write("No soil data available for this ward.")
-        
-        # Recommendations and Advice
-        recommendations, advice = get_fertilizer_recommendations_extension(
-            st.session_state.merged_data, selected_ward, crop_symptoms, lang=lang_code
-        )
-        st.subheader(translations[lang_code]["recommendations_header"].format(selected_ward))
-        for rec in recommendations:
-            st.markdown(f"- {rec}")
-        
-        st.subheader(translations[lang_code]["extension_advice"])
-        for tip in advice:
-            st.markdown(f"- {tip}")
-        
-        # Agro-Dealer Information
-        st.subheader(translations[lang_code]["dealers_header"])
-        if st.session_state.dealer_data is not None:
-            dealers = st.session_state.dealer_data[st.session_state.dealer_data['Ward'] == selected_ward]
-            if not dealers.empty:
-                st.write("Available Agro-Dealers:")
-                for _, dealer in dealers.iterrows():
-                    st.write(translations[lang_code]["dealer_info"].format(
-                        dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A'),
-                        dealer['Latitude'], dealer['Longitude']
-                    ))
-                m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
-                for _, dealer in dealers.iterrows():
-                    if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
-                        folium.Marker(
-                            [dealer['Latitude'], dealer['Longitude']],
-                            popup=f"{dealer['agrodealerName']} ({dealer['market']}) - Phone: {dealer.get('agrodealerPhone', 'N/A')}",
-                            icon=folium.Icon(color="green")
-                        ).add_to(m)
-                st_folium(m, width=700, height=500)
-            else:
-                st.write(translations[lang_code]["dealers_none"])
-        
-        # Record Interaction
-        st.subheader(translations[lang_code]["extension_feedback"])
-        with st.form("extension_feedback_form"):
-            notes = st.text_area("Record notes about this farmer interaction (e.g., farmer name, issues discussed, follow-up needed)")
-            submit_notes = st.form_submit_button("Submit Notes")
-            if submit_notes and notes:
-                with open("extension_notes.txt", "a") as f:
-                    f.write(f"{selected_ward},{notes},{datetime.now()}\n")
-                st.success("Notes recorded successfully!")
-    else:
-        st.error(translations[lang_code]["error_data"])
 
 # Footer
 st.markdown("---")
