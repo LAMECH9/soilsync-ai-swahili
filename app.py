@@ -83,7 +83,7 @@ translations = {
         "footer": "SoilSync AI na Chuo Kikuu cha Kibabii | Inatumia Data ya KALRO | Wasiliana: peter.barasa@kibu.ac.ke",
         "rec_ph_acidic": "Tumia **chokaa cha kilimo** (tani 1–2 kwa hekta) kurekebisha udongo wenye tindikali (pH {:.2f}).",
         "rec_ph_alkaline": "Tumia **Ammonium Sulphate** (kg 100–200 kwa hekta) kupunguza udongo wa alkali (pH {:.2f}).",
-        "rec_nitrogen": "Tumia **DAP (kg 100–150 kwa hekta)** wakati wa kupanda na **CAN (kg 100–200 kwa hekta)** au **Urea (kg 50–100 kwa hekta)** kwa kurutubisha juu ili kushughulikia upungufu wa nitrojeni.",
+        "rec_nitrogen": "Tumia **DAP (kg 100–150 kwa hekta)** wakati wa kupanda na **CAN (kg 100–200 kwa hekta)** au **Urea (kg 50–100 kwa hekta)** kwa kurutubisha juu ili kushughulikia updungufu wa nitrojeni.",
         "rec_phosphorus": "Tumia **DAP (kg 100–150 kwa hekta)** au **TSP (kg 100–150 kg kwa hekta)** wakati wa kupanda kwa upungufu wa fosforasi.",
         "rec_potassium": "Tumia **NPK 17:17:17 au 23:23:0** (kg 100–150 kwa hekta) wakati wa kupanda kwa upungufu wa potasiamu.",
         "rec_zinc": "Tumia **Mbolea ya Mavuno Maize** au **YaraMila Cereals** kwa upungufu wa zinki, au tumia dawa ya zinki ya sulfate (kg 5–10 kwa hekta).",
@@ -121,7 +121,7 @@ def fetch_soil_data(county_name, crop="maize"):
         available_columns = [col for col in relevant_columns if col in df.columns]
         df_filtered = df[available_columns].copy()
         if "crop" in df_filtered.columns:
-            df_filtered["crop"] = df_filtered["crop"].astype(str)
+        df_filtered["crop"] = df_filtered["crop"].astype(str)
             maize_mask = df_filtered["crop"].str.lower().str.contains(crop.lower(), na=False)
             df_filtered = df_filtered[maize_mask]
         core_params = [
@@ -453,9 +453,10 @@ if user_type == translations["en"]["farmer"]:
     st.header(translations[lang_code]["farmer_header"])
     st.write(translations[lang_code]["farmer_instruction"])
     
-    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else [
-        "Kiminini", "Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"
-    ]
+    # Ensure all required wards are available
+    required_wards = ["Kiminini", "Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
+    data_wards = sorted(st.session_state.merged_data['Ward'].dropna().str.lower().unique().tolist()) if st.session_state.merged_data is not None else []
+    wards = sorted(list(set(required_wards + [w.title() for w in data_wards])))
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
     st.subheader(translations[lang_code]["crop_state_header"])
@@ -514,7 +515,10 @@ elif user_type == translations["en"]["research_institution"]:
     st.write("Conduct advanced soil fertility analysis, visualize data, and generate insights for maize farming in Trans Nzoia.")
     
     if st.session_state.merged_data is not None:
-        wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist())
+        # Ensure all required wards are available
+        required_wards = ["Kiminini", "Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
+        data_wards = sorted(st.session_state.merged_data['Ward'].dropna().str.lower().unique().tolist())
+        wards = sorted(list(set(required_wards + [w.title() for w in data_wards])))
         selected_ward = st.selectbox("Select Ward for Analysis", wards)
         ward_data = st.session_state.merged_data[st.session_state.merged_data['Ward'] == selected_ward]
         
