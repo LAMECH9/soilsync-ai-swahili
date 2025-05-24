@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 import json
 from datetime import datetime
 import logging
+import plotly.express as px
 
 # === CONFIGURE ===
 API_TOKEN = "KLRDg3ElBVveVghcN61aScAJevKMgofJF7CWcsVwG2mYt0mUQF63DdB0n6OHqOo9WYCilH7bjJ6s9sIc4zT9zzeCyPXhvytRL4wMAtbV5fRxnAmLFtEI9KXO5tvnu0Pm3rwhAfx5tXGiQOKEm98U2lGTZOIVav2hRtGwsU8SrzUPpZA6CNSNCGkCNp3sndYsrAqeme9xsqFGNEla2PBgjZ0ertc6j8nzCVzUQ8gX2T9hFnR8SoKRA7eyRMHRMDrn"
@@ -56,7 +57,9 @@ translations = {
         "fertilizer_savings": "Fertilizer Waste Reduction: {:.1f}%",
         "prediction_header": "Soil Fertility Predictions Across Wards",
         "param_stats": "Soil Parameter Statistics",
-        "feature_importance": "Feature Importance for Soil Fertility Prediction"
+        "feature_importance": "Feature Importance for Soil Fertility Prediction",
+        "agrodealer_map": "Agro-Dealer Locations",
+        "soil_parameter_dist": "Soil Parameter Distribution"
     },
     "sw": {
         "title": "SoilSync AI: Mapendekezo ya Mbolea ya Usahihi kwa Mahindi",
@@ -93,7 +96,9 @@ translations = {
         "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%",
         "prediction_header": "Mapendekezo ya Uzazi wa Udongo Katika Wadi",
         "param_stats": "Takwimu za Vigezo vya Udongo",
-        "feature_importance": "Umuhimu wa Vipengele kwa Utambuzi wa Uzazi wa Udongo"
+        "feature_importance": "Umuhimu wa Vipengele kwa Utambuzi wa Uzazi wa Udongo",
+        "agrodealer_map": "Maeneo ya Wauzaji wa Mbolea",
+        "soil_parameter_dist": "Usambazaji wa Vigezo vya Udongo"
     }
 }
 
@@ -395,6 +400,7 @@ def get_fertilizer_recommendations_researcher(input_data, model, scaler, feature
     return recommendations if recommendations else [translations[lang]["optimal_soil"]], advice, explanation
 
 # === STREAMLIT APP ===
+st.set_page_config(layout="wide", page_title="SoilSync AI", page_icon="🌱")
 st.title(translations["en"]["title"])
 
 # Sidebar for User Type Selection
@@ -484,6 +490,9 @@ if user_type == translations["en"]["farmer"]:
                         dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A'),
                         dealer['Latitude'], dealer['Longitude']
                     ))
+                
+                # Display map with agro-dealer locations
+                st.subheader(translations[lang_code]["agrodealer_map"])
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
                     if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
@@ -500,7 +509,7 @@ if user_type == translations["en"]["farmer"]:
 
 # Researcher Interface
 elif user_type == translations["en"]["researcher"]:
-    st.header(translations["en"]["researcher"])
+    st.header("Researcher Dashboard")
     st.write("Analyze soil data, input parameters, and use machine learning to predict soil fertility for Trans Nzoia maize farming.")
     
     if st.session_state.merged_data is not None:
@@ -511,12 +520,15 @@ elif user_type == translations["en"]["researcher"]:
         st.subheader("Input Soil Parameters")
         input_data = {}
         with st.form("soil_input_form"):
-            input_data["soil_pH"] = st.number_input("Soil pH", min_value=0.0, max_value=14.0, value=6.0, step=0.1)
-            input_data["total_Nitrogen_percent_"] = st.number_input("Total Nitrogen (%)", min_value=0.0, max_value=1.0, value=0.2, step=0.01)
-            input_data["phosphorus_Olsen_ppm"] = st.number_input("Phosphorus (Olsen, ppm)", min_value=0.0, max_value=100.0, value=15.0, step=1.0)
-            input_data["potassium_meq_percent_"] = st.number_input("Potassium (meq%)", min_value=0.0, max_value=2.0, value=0.2, step=0.01)
-            input_data["zinc_ppm"] = st.number_input("Zinc (ppm)", min_value=0.0, max_value=10.0, value=1.0, step=0.1)
-            input_data["boron_ppm"] = st.number_input("Boron (ppm)", min_value=0.0, max_value=5.0, value=0.5, step=0.1)
+            col1, col2 = st.columns(2)
+            with col1:
+                input_data["soil_pH"] = st.number_input("Soil pH", min_value=0.0, max_value=14.0, value=6.0, step=0.1)
+                input_data["total_Nitrogen_percent_"] = st.number_input("Total Nitrogen (%)", min_value=0.0, max_value=1.0, value=0.2, step=0.01)
+                input_data["phosphorus_Olsen_ppm"] = st.number_input("Phosphorus (Olsen, ppm)", min_value=0.0, max_value=100.0, value=15.0, step=1.0)
+            with col2:
+                input_data["potassium_meq_percent_"] = st.number_input("Potassium (meq%)", min_value=0.0, max_value=2.0, value=0.2, step=0.01)
+                input_data["zinc_ppm"] = st.number_input("Zinc (ppm)", min_value=0.0, max_value=10.0, value=1.0, step=0.1)
+                input_data["boron_ppm"] = st.number_input("Boron (ppm)", min_value=0.0, max_value=5.0, value=0.5, step=0.1)
             submit_button = st.form_submit_button("Submit Soil Data")
         
         if submit_button:
@@ -531,33 +543,14 @@ elif user_type == translations["en"]["researcher"]:
             
             if explanation:
                 st.subheader(translations["en"]["feature_importance"])
-                chart_config = {
-                    "type": "bar",
-                    "data": {
-                        "labels": list(explanation.keys()),
-                        "datasets": [{
-                            "label": "Feature Importance",
-                            "data": list(explanation.values()),
-                            "backgroundColor": "#3498db",
-                            "borderColor": "#2980b9",
-                            "borderWidth": 1
-                        }]
-                    },
-                    "options": {
-                        "responsive": True,
-                        "scales": {
-                            "y": {
-                                "beginAtZero": True,
-                                "title": {"display": True, "text": "Importance"}
-                            },
-                            "x": {
-                                "title": {"display": True, "text": "Soil Parameter"}
-                            }
-                        }
-                    }
-                }
-                st.write("Feature Importance Chart")
-                st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
+                # Create a Plotly bar chart for feature importance
+                fig = px.bar(
+                    x=list(explanation.keys()),
+                    y=list(explanation.values()),
+                    labels={'x': 'Soil Parameter', 'y': 'Importance'},
+                    title="Feature Importance for Soil Fertility Prediction"
+                )
+                st.plotly_chart(fig, use_container_width=True)
         
         st.subheader(translations["en"]["param_stats"])
         key_params = [
@@ -568,70 +561,35 @@ elif user_type == translations["en"]["researcher"]:
         key_params = [col for col in key_params if col in ward_data.columns]
         if key_params:
             st.write(ward_data[key_params].describe())
-            st.subheader("Soil Parameter Visualization")
+            
+            st.subheader(translations["en"]["soil_parameter_dist"])
             param = st.selectbox("Select Parameter to Visualize", key_params)
-            chart_data = ward_data[param].dropna()
-            if not chart_data.empty:
-                chart_config = {
-                    "type": "bar",
-                    "data": {
-                        "labels": ward_data.index.astype(str).tolist(),
-                        "datasets": [{
-                            "label": param,
-                            "data": chart_data.tolist(),
-                            "backgroundColor": "#3498db",
-                            "borderColor": "#2980b9",
-                            "borderWidth": 1
-                        }]
-                    },
-                    "options": {
-                        "responsive": True,
-                        "scales": {
-                            "y": {
-                                "beginAtZero": False,
-                                "title": {"display": True, "text": param}
-                            },
-                            "x": {
-                                "title": {"display": True, "text": "Sample Index"}
-                            }
-                        }
-                    }
-                }
-                st.write("Interactive Soil Parameter Chart")
-                st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
+            if not ward_data[param].empty:
+                fig = px.histogram(
+                    ward_data, 
+                    x=param,
+                    nbins=20,
+                    title=f"Distribution of {param} in {selected_ward}"
+                )
+                st.plotly_chart(fig, use_container_width=True)
         
         st.subheader(translations["en"]["prediction_header"])
         predictions_df = predict_all_wards(st.session_state.merged_data, st.session_state.model, st.session_state.scaler, st.session_state.features)
         if not predictions_df.empty:
             st.write(predictions_df)
-            prediction_counts = predictions_df['Fertility'].value_counts().to_dict()
-            chart_config = {
-                "type": "bar",
-                "data": {
-                    "labels": list(prediction_counts.keys()),
-                    "datasets": [{
-                        "label": "Number of Wards",
-                        "data": list(prediction_counts.values()),
-                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"],
-                        "borderColor": ["#27ae60", "#e67e22", "#c0392b"],
-                        "borderWidth": 1
-                    }]
-                },
-                "options": {
-                    "responsive": True,
-                    "scales": {
-                        "y": {
-                            "beginAtZero": True,
-                            "title": {"display": True, "text": "Number of Wards"}
-                        },
-                        "x": {
-                            "title": {"display": True, "text": "Fertility Level"}
-                        }
-                    }
-                }
-            }
-            st.write("Soil Fertility Distribution Across Wards")
-            st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
+            
+            # Create a Plotly pie chart for fertility distribution
+            fertility_counts = predictions_df['Fertility'].value_counts().reset_index()
+            fertility_counts.columns = ['Fertility', 'Count']
+            fig = px.pie(
+                fertility_counts,
+                values='Count',
+                names='Fertility',
+                title="Soil Fertility Distribution Across Wards",
+                color='Fertility',
+                color_discrete_map={'high': 'green', 'medium': 'orange', 'low': 'red'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.write("No predictions available due to missing model or data.")
         
@@ -640,6 +598,9 @@ elif user_type == translations["en"]["researcher"]:
             dealers = st.session_state.dealer_data[st.session_state.dealer_data['Ward'] == selected_ward]
             if not dealers.empty:
                 st.write(dealers[['agrodealerName', 'market', 'agrodealerPhone', 'Latitude', 'Longitude']])
+                
+                # Display map with agro-dealer locations
+                st.subheader("Agro-Dealer Locations")
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
                     if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
