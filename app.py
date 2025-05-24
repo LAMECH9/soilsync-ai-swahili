@@ -115,6 +115,110 @@ translations = {
     }
 }
 
+# === FUNCTION TO FETCH SOIL DATA ===
+def fetch_soil_data(county_name, crop="maize"):
+    url = f"{SOIL_API_URL}/{county_name}"
+    headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        df = pd.DataFrame(data)
+        relevant_columns = [
+            "county", "constituency", "ward", "latitude", "longitude", "soil_pH",
+            "total_Nitrogen_percent_", "total_Org_Carbon_percent_", "phosphorus_Olsen_ppm",
+            "potassium_meq_percent_", "calcium_meq_percent_", "magnesium_meq_percent_",
+            "zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm", "crop"
+        ]
+        available_columns = [col for col in relevant_columns if col in df.columns]
+        df_filtered = df[available_columns].copy()
+        if "crop" in df_filtered.columns:
+            df_filtered["crop"] = df_filtered["crop"].astype(str)
+            maize_mask = df_filtered["crop"].str.lower().str.contains(crop.lower(), na=False)
+            df_filtered = df_filtered[maize_mask]
+        core_params = [
+            "soil_pH", "total_Nitrogen_percent_", "total_Org_Carbon_percent_",
+            "phosphorus_Olsen_ppm", "potassium_meq_percent_"
+        ]
+        core_params = [col for col in core_params if col in df_filtered.columns]
+        df_filtered = df_filtered.dropna(subset=core_params, how='any')
+        numeric_cols = [col for col in core_params + ["zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm"] if col in df_filtered.columns]
+        for col in numeric_cols:
+            df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
+        df_filtered = df_filtered.rename(columns={
+            "county": "County", "constituency": "Constituency", "ward": "Ward",
+            "latitude": "Latitude", "longitude": "Longitude"
+        })
+        logger.info(f"Fetched {len(df_filtered)} soil records for {county_name}")
+        return df_filtered
+    except Exception as e:
+        logger.error(f"Soil data fetch error: {e}")
+        st.error(translations["en"]["error_data"])
+        return None
+
+# === FUNCTION TO FETCH AGRO-DEALER DATA ===
+def fetch_agrodealer_data(county_name, constituencies=None, wards=None):
+    headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
+    all_dealers = []
+    try:
+        if constituencies and wards:
+            for constituency, ward in zip(constituencies, wards):
+                url = f"{AGRODEALER_API_URL}/{county_name}/{constituency}/{ward}"
+                try:
+                    response = requests.get(url, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
+                    if isinstance(data, dict) and "dealers" in data:
+                        all_dealers.extend(data["dealers"])
+                except:
+                    continue
+        if not all_dealers:
+            url = f"{AGRODEALER_API_URL}/{county_name}"
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and "dealers" in data:
+                all_dealers.extend(data["dealers"])
+        if all_dealers:
+            df_dealers = pd.DataFrame(all_dealers)
+            dealer_columns = ["county", "subcounty", "ward", "agrodealerName", "market", "gpsLatitude", "gpsLongitude", "agrodealerPhone"]
+            df_dealers = df_dealers[[col for col in dealer_columns if col in df_dealers.columns]]
+            df_dealers = df_dealers.rename(columns={
+                "county": "County", "subcounty": "Constituency", "ward": "Ward",
+                "gpsLatitude": "Latitude", "gpsLongitude": "Longitude"
+            })
+            df_dealers['Latitude'] = pd.to_numeric(df_dealers['Latitude'], errors='coerce')
+            df_dealers['Longitude'] = pd.to_numeric(df_dealers['Longitude'], errors='coerce')
+            logger.info(f"Fetched {len(df_dealers)} agro-dealer records for {county_name}")
+            return df_dealers
+        return None
+    except Exception as e:
+        logger.error(f"Agro-dealer fetch error: {e}")
+        st.error(translations["en"]["error_data"])
+        return None
+
+# === FUNCTION TO MERGE SOIL AND AGRO-DEALER DATA ===
+def merge_soil_agrodealer_data(soil_df, dealer_df):
+    if soil_df is None:
+        logger.error("Cannot merge: Soil dataset is empty")
+        return None
+    if dealer_df is None:
+        logger.warning("No agro-dealer data available; proceeding with soil data")
+        return soil_df
+    try:
+        merged_df = pd.merge(
+            soil_df, dealer_df, on=["County", "Constituency", "Ward"],
+            how="left", suffixes=("_soil", "_dealer")
+        )
+        merged_df['Latitude'] = merged_df['Latitude_soil'].combine_first(merged_df['Latitude_dealer'])
+        merged_df['Longitude'] = merged_df['Longitude_soil'].combine_first(merged_df['Longitude_dealer'])
+        merged_df = merged_df.drop(columns=['Latitude_soil', 'Longitude_soil', 'Latitude_dealer', 'Longitude_dealer'], errors='ignore')
+        logger.info(f"Merged dataset contains {len(merged_df)} records")
+        return merged_df
+    except Exception as e:
+        logger.error(f"Merge error: {e}")
+        return soil_df
+
 # === TRAIN RANDOM FOREST MODEL ===
 def train_soil_model(soil_data):
     if soil_data is None or soil_data.empty:
@@ -127,10 +231,8 @@ def train_soil_model(soil_data):
         return None, None, []
     X = soil_data[features].dropna()
     if X.empty:
-        logger.warning("No data after dropping NaN values. Using county-level averages.")
-        X = soil_data.groupby("County")[features].mean().reset_index()[features].dropna()
-        if X.empty:
-            return None, None, features
+        logger.warning("No data after dropping NaN values")
+        return None, None, features
     y = []
     for _, row in X.iterrows():
         score = (
@@ -190,110 +292,13 @@ def predict_all_wards(soil_data, model, scaler, features):
             predictions.append({"Ward": ward, "Fertility": prediction})
     return pd.DataFrame(predictions) if predictions else pd.DataFrame(columns=["Ward", "Fertility"])
 
-# === FETCH SOIL DATA FUNCTION ===
-def fetch_soil_data(county_name, crop="maize"):
-    url = f"{SOIL_API_URL}/{county_name}"
-    headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        df = pd.DataFrame(data)
-        relevant_columns = [
-            "county", "constituency", "ward", "latitude", "longitude", "soil_pH",
-            "total_Nitrogen_percent_", "total_Org_Carbon_percent_", "phosphorus_Olsen_ppm",
-            "potassium_meq_percent_", "calcium_meq_percent_", "magnesium_meq_percent_",
-            "zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm", "crop"
-        ]
-        available_columns = [col for col in relevant_columns if col in df.columns]
-        df_filtered = df[available_columns].copy()
-        if "crop" in df_filtered.columns:
-            df_filtered.loc[:, "crop"] = df_filtered["crop"].astype(str)
-            maize_mask = df_filtered["crop"].str.lower().str.contains(crop.lower(), na=False)
-            df_filtered = df_filtered[maize_mask]
-        core_params = [
-            "soil_pH", "total_Nitrogen_percent_", "total_Org_Carbon_percent_",
-            "phosphorus_Olsen_ppm", "potassium_meq_percent_"
-        ]
-        core_params = [col for col in core_params if col in df_filtered.columns]
-        df_filtered = df_filtered.dropna(subset=core_params, how='any')
-        numeric_cols = [col for col in core_params + ["zinc_ppm", "boron_ppm", "electr_Conductivity_mS_per_cm"] if col in df_filtered.columns]
-        for col in numeric_cols:
-            df_filtered.loc[:, col] = pd.to_numeric(df_filtered[col], errors='coerce')
-        df_filtered = df_filtered.rename(columns={
-            "county": "County", "constituency": "Constituency", "ward": "Ward",
-            "latitude": "Longitude", "longitude": "Longitude"
-        })
-        return df_filtered
-    except Exception as e:
-        logger.error(f"Soil data fetch error: {e}")
-        st.error(translations["en"]["error_data"])
-        return None
-
-# === FETCH AGRO-DEALER DATA FUNCTION ===
-def fetch_agrodealer_data(county_name, constituencies, wards):
-    headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
-    all_dealers = []
-    for constituency, ward in zip(constituencies, wards):
-        url = f"{AGRODEALER_API_URL}/{county_name}/{constituency}/{ward}"
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, dict) and "dealers" in data:
-                all_dealers.extend(data["dealers"])
-        except:
-            continue
-    if not all_dealers:
-        url = f"{AGRODEALER_API_URL}/{county_name}"
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, dict) and "dealers" in data:
-                all_dealers.extend(data["dealers"])
-        except:
-            st.error(translations["en"]["error_data"])
-            return None
-    if all_dealers:
-        df_dealers = pd.DataFrame(all_dealers)
-        dealer_columns = ["county", "subcounty", "ward", "agrodealerName", "market", "gpsLatitude", "gpsLongitude", "agrodealerPhone"]
-        df_dealers = df_dealers[[col for col in dealer_columns if col in df_dealers.columns]]
-        df_dealers = df_dealers.rename(columns={
-            "county": "County", "subcounty": "Constituency", "ward": "Ward",
-            "gpsLatitude": "Latitude", "gpsLongitude": "Longitude"
-        })
-        df_dealers['Latitude'] = pd.to_numeric(df_dealers['Latitude'], errors='coerce')
-        df_dealers['Longitude'] = pd.to_numeric(df_dealers['Longitude'], errors='coerce')
-        return df_dealers
-    return None
-
-# === MERGE DATA FUNCTION ===
-def merge_soil_agrodealer_data(soil_df, dealer_df):
-    if soil_df is None:
-        return None
-    if dealer_df is None:
-        return soil_df
-    try:
-        merged_df = pd.merge(
-            soil_df, dealer_df, on=["County", "Constituency", "Ward"],
-            how="left", suffixes=("_soil", "_dealer")
-        )
-        merged_df['Latitude'] = merged_df['Latitude_soil'].fillna(merged_df['Latitude_dealer']).infer_objects(copy=False)
-        merged_df['Longitude'] = merged_df['Longitude_soil'].fillna(merged_df['Longitude_dealer']).infer_objects(copy=False)
-        merged_df = merged_df.drop(columns=['Latitude_soil', 'Longitude_soil', 'Latitude_dealer', 'Longitude_dealer'], errors='ignore')
-        return merged_df
-    except Exception as e:
-        logger.error(f"Merge error: {e}")
-        return soil_df
-
 # === ESTIMATE CARBON SEQUESTRATION ===
 def estimate_carbon_sequestration(soil_data, ward):
     ward_data = soil_data[soil_data["Ward"] == ward]
     if ward_data.empty or 'total_Org_Carbon_percent_' not in ward_data.columns:
         return 0.0
     organic_carbon = ward_data["total_Org_Carbon_percent_"].mean()
-    sequestration_rate = organic_carbon * 0.58
+    sequestration_rate = organic_carbon * 0.58  # Based on proposal's 0.4 tons/ha/year average
     return sequestration_rate
 
 # === ESTIMATE YIELD IMPACT ===
@@ -562,8 +567,7 @@ if user_type == translations["en"]["farmer"]:
             submit_feedback = st.form_submit_button("Submit Feedback")
             if submit_feedback and feedback:
                 with open("feedback.txt", "a") as f:
-                    f.write(f"{selected_ward},{feedback},{datetime.now“
-“()}\n")
+                    f.write(f"{selected_ward},{feedback},{datetime.now()}\n")
                 st.success(translations[lang_code]["feedback_thanks"])
     else:
         st.error(translations[lang_code]["error_data"])
@@ -574,7 +578,7 @@ elif user_type == translations["en"]["researcher"]:
     st.write("Analyze soil data, input parameters, and use machine learning to predict soil fertility for Trans Nzoia maize farming.")
     
     if st.session_state.merged_data is not None:
-        wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
+        wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist())
         selected_ward = st.selectbox("Select Ward for Analysis", wards)
         ward_data = st.session_state.merged_data[st.session_state.merged_data['Ward'] == selected_ward]
         
@@ -609,7 +613,9 @@ elif user_type == translations["en"]["researcher"]:
                         "datasets": [{
                             "label": "Feature Importance",
                             "data": list(explanation.values()),
-                            "backgroundColor": "#3498db"
+                            "backgroundColor": "#3498db",
+                            "borderColor": "#2980b9",
+                            "borderWidth": 1
                         }]
                     },
                     "options": {
@@ -649,7 +655,9 @@ elif user_type == translations["en"]["researcher"]:
                         "datasets": [{
                             "label": param,
                             "data": chart_data.tolist(),
-                            "backgroundColor": "#3498db"
+                            "backgroundColor": "#3498db",
+                            "borderColor": "#2980b9",
+                            "borderWidth": 1
                         }]
                     },
                     "options": {
@@ -681,7 +689,9 @@ elif user_type == translations["en"]["researcher"]:
                     "datasets": [{
                         "label": "Number of Wards",
                         "data": list(prediction_counts.values()),
-                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"]
+                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"],
+                        "borderColor": ["#27ae60", "#e67e22", "#c0392b"],
+                        "borderWidth": 1
                     }]
                 },
                 "options": {
