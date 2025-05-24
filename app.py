@@ -26,7 +26,7 @@ translations = {
         "title": "SoilSync AI: Precision Fertilizer Recommendations for Maize",
         "select_user_type": "Select User Type",
         "farmer": "Farmer",
-        "researcher": "Researcher",
+        "research_institution": "Research Institution",
         "farmer_header": "Farmer-Friendly Recommendations",
         "farmer_instruction": "Select your ward and describe your crop's condition to get tailored fertilizer recommendations for maize farming in Trans Nzoia.",
         "select_ward": "Select Your Ward",
@@ -65,7 +65,7 @@ translations = {
         "title": "SoilSync AI: Mapendekezo ya Mbolea ya Usahihi kwa Mahindi",
         "select_user_type": "Chagua Aina ya Mtumiaji",
         "farmer": "Mkulima",
-        "researcher": "Mtafiti",
+        "research_institution": "Taasisi ya Utafiti",
         "farmer_header": "Mapendekezo Yanayofaa Mkulima",
         "farmer_instruction": "Chagua wadi yako na elezea hali ya mazao yako ili kupata mapendekezo ya mbolea yanayofaa kwa kilimo cha mahindi huko Trans Nzoia.",
         "select_ward": "Chagua Wadi Yako",
@@ -103,11 +103,12 @@ translations = {
 }
 
 # === FUNCTION TO FETCH SOIL DATA ===
+@st.cache_data
 def fetch_soil_data(county_name, crop="maize"):
     url = f"{SOIL_API_URL}/{county_name}"
     headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
         df = pd.DataFrame(data)
@@ -146,6 +147,7 @@ def fetch_soil_data(county_name, crop="maize"):
         return None
 
 # === FUNCTION TO FETCH AGRO-DEALER DATA ===
+@st.cache_data
 def fetch_agrodealer_data(county_name, constituencies=None, wards=None):
     headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json"}
     all_dealers = []
@@ -154,7 +156,7 @@ def fetch_agrodealer_data(county_name, constituencies=None, wards=None):
             for constituency, ward in zip(constituencies, wards):
                 url = f"{AGRODEALER_API_URL}/{county_name}/{constituency}/{ward}"
                 try:
-                    response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=headers, timeout=10)
                     response.raise_for_status()
                     data = response.json()
                     if isinstance(data, dict) and "dealers" in data:
@@ -163,7 +165,7 @@ def fetch_agrodealer_data(county_name, constituencies=None, wards=None):
                     continue
         if not all_dealers:
             url = f"{AGRODEALER_API_URL}/{county_name}"
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict) and "dealers" in data:
@@ -364,8 +366,8 @@ def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, lang="
     
     return recommendations if recommendations else [translations[lang]["optimal_soil"]]
 
-# === FERTILIZER RECOMMENDATION FUNCTION FOR RESEARCHERS ===
-def get_fertilizer_recommendations_researcher(input_data, model, scaler, features, lang="en"):
+# === FERTILIZER RECOMMENDATION FUNCTION FOR RESEARCH INSTITUTIONS ===
+def get_fertilizer_recommendations_research(input_data, model, scaler, features, lang="en"):
     recommendations = []
     prediction, explanation = predict_soil_fertility(model, scaler, features, input_data)
     
@@ -389,13 +391,13 @@ def get_fertilizer_recommendations_researcher(input_data, model, scaler, feature
     
     advice = "No model prediction available." if prediction is None else f"Soil fertility predicted as {prediction}. "
     if prediction == "low":
-        advice += "Explain to the farmer that low soil fertility is due to deficiencies in: "
+        advice += "Low soil fertility detected due to deficiencies in: "
         advice += ", ".join([f"{k} ({v:.2%})" for k, v in (explanation or {}).items() if v > 0.1])
-        advice += ". Recommend applying fertilizers as listed and improving soil management."
+        advice += ". Recommend targeted fertilizer applications and soil management improvements."
     elif prediction == "medium":
-        advice += "Tell the farmer that soil fertility is moderate. Address specific deficiencies listed to boost yields."
+        advice += "Moderate soil fertility. Address specific deficiencies to optimize maize yields."
     elif prediction == "high":
-        advice += "Inform the farmer that soil is fertile but maintain nutrient balance with listed recommendations."
+        advice += "High soil fertility. Maintain nutrient balance with minimal fertilizer adjustments."
     
     return recommendations if recommendations else [translations[lang]["optimal_soil"]], advice, explanation
 
@@ -405,7 +407,7 @@ st.title(translations["en"]["title"])
 
 # Sidebar for User Type Selection
 user_type = st.sidebar.selectbox(translations["en"]["select_user_type"], 
-                                [translations["en"]["farmer"], translations["en"]["researcher"]], 
+                                [translations["en"]["farmer"], translations["en"]["research_institution"]], 
                                 key="user_type")
 
 # Initialize Session State
@@ -491,7 +493,6 @@ if user_type == translations["en"]["farmer"]:
                         dealer['Latitude'], dealer['Longitude']
                     ))
                 
-                # Display map with agro-dealer locations
                 st.subheader(translations[lang_code]["agrodealer_map"])
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
@@ -507,10 +508,10 @@ if user_type == translations["en"]["farmer"]:
     else:
         st.error(translations[lang_code]["error_data"])
 
-# Researcher Interface
-elif user_type == translations["en"]["researcher"]:
-    st.header("Researcher Dashboard")
-    st.write("Analyze soil data, input parameters, and use machine learning to predict soil fertility for Trans Nzoia maize farming.")
+# Research Institution Interface
+elif user_type == translations["en"]["research_institution"]:
+    st.header("Research Institution Dashboard")
+    st.write("Conduct advanced soil fertility analysis, visualize data, and generate insights for maize farming in Trans Nzoia.")
     
     if st.session_state.merged_data is not None:
         wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist())
@@ -532,24 +533,25 @@ elif user_type == translations["en"]["researcher"]:
             submit_button = st.form_submit_button("Submit Soil Data")
         
         if submit_button:
-            recommendations, advice, explanation = get_fertilizer_recommendations_researcher(
+            recommendations, advice, explanation = get_fertilizer_recommendations_research(
                 input_data, st.session_state.model, st.session_state.scaler, st.session_state.features, lang="en"
             )
             st.subheader("Model-Based Recommendations")
             for rec in recommendations:
                 st.markdown(f"- {rec}")
-            st.write("**Advice for Farmer Communication**:")
+            st.write("**Insights for Agricultural Strategy**:")
             st.write(advice)
             
             if explanation:
                 st.subheader(translations["en"]["feature_importance"])
-                # Create a Plotly bar chart for feature importance
                 fig = px.bar(
                     x=list(explanation.keys()),
                     y=list(explanation.values()),
                     labels={'x': 'Soil Parameter', 'y': 'Importance'},
-                    title="Feature Importance for Soil Fertility Prediction"
+                    title="Feature Importance for Soil Fertility Prediction",
+                    color_discrete_sequence=['#636EFA']
                 )
+                fig.update_layout(showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
         
         st.subheader(translations["en"]["param_stats"])
@@ -569,7 +571,8 @@ elif user_type == translations["en"]["researcher"]:
                     ward_data, 
                     x=param,
                     nbins=20,
-                    title=f"Distribution of {param} in {selected_ward}"
+                    title=f"Distribution of {param} in {selected_ward}",
+                    color_discrete_sequence=['#636EFA']
                 )
                 st.plotly_chart(fig, use_container_width=True)
         
@@ -578,7 +581,6 @@ elif user_type == translations["en"]["researcher"]:
         if not predictions_df.empty:
             st.write(predictions_df)
             
-            # Create a Plotly pie chart for fertility distribution
             fertility_counts = predictions_df['Fertility'].value_counts().reset_index()
             fertility_counts.columns = ['Fertility', 'Count']
             fig = px.pie(
@@ -587,7 +589,7 @@ elif user_type == translations["en"]["researcher"]:
                 names='Fertility',
                 title="Soil Fertility Distribution Across Wards",
                 color='Fertility',
-                color_discrete_map={'high': 'green', 'medium': 'orange', 'low': 'red'}
+                color_discrete_map={'high': '#2ECC71', 'medium': '#F1C40F', 'low': '#E74C3C'}
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -599,8 +601,7 @@ elif user_type == translations["en"]["researcher"]:
             if not dealers.empty:
                 st.write(dealers[['agrodealerName', 'market', 'agrodealerPhone', 'Latitude', 'Longitude']])
                 
-                # Display map with agro-dealer locations
-                st.subheader("Agro-Dealer Locations")
+                st.subheader(translations["en"]["agrodealer_map"])
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
                     if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
@@ -613,9 +614,14 @@ elif user_type == translations["en"]["researcher"]:
             else:
                 st.write("No agro-dealers found for this ward.")
         
-        st.subheader("Download Data")
+        st.subheader("Data Export")
         csv = ward_data.to_csv(index=False)
         st.download_button("Download Ward Soil Data", csv, f"{selected_ward}_soil_data.csv", "text/csv")
+        
+        # Export full dataset
+        if st.button("Export Full Trans Nzoia Dataset"):
+            full_csv = st.session_state.merged_data.to_csv(index=False)
+            st.download_button("Download Full Dataset", full_csv, "trans_nzoia_soil_data.csv", "text/csv")
     else:
         st.error(translations["en"]["error_data"])
 
