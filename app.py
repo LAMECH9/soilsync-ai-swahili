@@ -14,8 +14,6 @@ import logging
 API_TOKEN = "KLRDg3ElBVveVghcN61aScAJevKMgofJF7CWcsVwG2mYt0mUQF63DdB0n6OHqOo9WYCilH7bjJ6s9sIc4zT9zzeCyPXhvytRL4wMAtbV5fRxnAmLFtEI9KXO5tvnu0Pm3rwhAfx5tXGiQOKEm98U2lGTZOIVav2hRtGwsU8SrzUPpZA6CNSNCGkCNp3sndYsrAqeme9xsqFGNEla2PBgjZ0ertc6j8nzCVzUQ8gX2T9hFnR8SoKRA7eyRMHRMDrn"
 SOIL_API_URL = "https://farmerdb.kalro.org/api/SoilData/legacy/county"
 AGRODEALER_API_URL = "https://farmerdb.kalro.org/api/SoilData/agrodealers"
-WEATHER_API_KEY = "your_openweather_api_key"  # Replace with actual key in production
-WEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +40,6 @@ translations = {
         "dealer_info": "- **{}** ({}) - Phone: {}",
         "error_data": "Unable to load soil data. Please try again later.",
         "language_confirmation": "Language set to English.",
-        "weather_info": "Current weather in Trans Nzoia: {}°C, {} mm precipitation. {}",
         "footer": "SoilSync AI by Kibabii University | Powered by KALRO Data | Contact: peter.barasa@kibu.ac.ke",
         "rec_ph_acidic": "Apply **agricultural lime** (1–2 tons/ha) to correct acidic soil (pH {:.2f}).",
         "rec_ph_alkaline": "Use **Ammonium Sulphate** (100–200 kg/ha) to lower alkaline soil (pH {:.2f}).",
@@ -53,7 +50,6 @@ translations = {
         "rec_boron": "Apply **borax** (1–2 kg/ha) for boron deficiency.",
         "rec_organic": "Apply **compost/manure (5–10 tons/ha)** or **Mazao Organic** to boost organic matter.",
         "rec_salinity": "Implement leaching with irrigation and use **Ammonium Sulphate** to manage high salinity.",
-        "weather_warning": "Avoid top-dressing fertilizers due to high precipitation ({} mm). Wait for drier conditions.",
         "model_error": "Model training failed. Using threshold-based recommendations.",
         "feedback_prompt": "How effective were the recommendations? (e.g., yield changes, issues)",
         "feedback_thanks": "Thank you for your feedback!",
@@ -82,7 +78,6 @@ translations = {
         "dealer_info": "- **{}** ({}) - Simu: {}",
         "error_data": "Imeshindwa kupakia data ya udongo. Tafadhali jaribu tena baadaye.",
         "language_confirmation": "Lugha imewekwa kwa Kiswahili.",
-        "weather_info": "Hali ya hewa ya sasa huko Trans Nzoia: {}°C, mvua {} mm. {}",
         "footer": "SoilSync AI na Chuo Kikuu cha Kibabii | Inatumia Data ya KALRO | Wasiliana: peter.barasa@kibu.ac.ke",
         "rec_ph_acidic": "Tumia **chokaa cha kilimo** (tani 1–2 kwa hekta) kurekebisha udongo wenye tindikali (pH {:.2f}).",
         "rec_ph_alkaline": "Tumia **Ammonium Sulphate** (kg 100–200 kwa hekta) kupunguza udongo wa alkali (pH {:.2f}).",
@@ -93,7 +88,6 @@ translations = {
         "rec_boron": "Tumia **borax** (kg 1–2 kwa hekta) kwa upungufu wa boron.",
         "rec_organic": "Tumia **mbolea ya kikaboni/samadi (tani 5–10 kwa hekta)** au **Mazao Organic** kuongeza vitu vya kikaboni.",
         "rec_salinity": "Tekeleza uchukuzi wa maji na umwagiliaji na tumia **Ammonium Sulphate** kushughulikia chumvi nyingi.",
-        "weather_warning": "Epuka kurutubisha juu kwa sababu ya mvua nyingi ({} mm). Subiri hali ya hewa kavu.",
         "model_error": "Ufundishaji wa modeli umeshindwa. Tumia mapendekezo ya msingi wa kizingiti.",
         "feedback_prompt": "Mapendekezo yalikuwa na ufanisi gani? (mfano, mabadiliko ya mavuno, matatizo)",
         "feedback_thanks": "Asante kwa maoni yako!",
@@ -122,9 +116,8 @@ translations = {
         "dealer_info": "- **{}** ({}) - Simu: {}",
         "error_data": "Ok nyal pako data marach. Temo kendo bange.",
         "language_confirmation": "Dho ochan kaka Luo.",
-        "weather_info": "Hali mar koth e Trans Nzoia: {}°C, koth {} mm. {}",
         "footer": "SoilSync AI gi Kibabii University | Kalro Data | Donjo: peter.barasa@kibu.ac.ke",
-        "rec_ph_acidic": "Keto **chokaa** (1–2 ton/ha) mondo owin intelligible ne lowo ma rach (pH {:.2f}).",
+        "rec_ph_acidic": "Keto **chokaa** (1–2 ton/ha) mondo owinjore ne lowo ma rach (pH {:.2f}).",
         "rec_ph_alkaline": "Keto **Ammonium Sulphate** (100–200 kg/ha) mondo opung lowo (pH {:.2f}).",
         "rec_nitrogen": "Keto **DAP (100–150 kg/ha)** e kinde marach kendo **CAN (100–200 kg/ha)** koso **Urea (50–100 kg/ha)** ne nitrogen.",
         "rec_phosphorus": "Keto **DAP (100–150 kg/ha)** koso **TSP (100–150 kg/ha)** e kinde marach ne phosphorus.",
@@ -133,7 +126,6 @@ translations = {
         "rec_boron": "Keto **borax** (1–2 kg/ha) ne boron.",
         "rec_organic": "Keto **samadi (5–10 ton/ha)** koso **Mazao Organic** mondo omed gik ma in e lowo.",
         "rec_salinity": "Tum leaching gi pi kendo keto **Ammonium Sulphate** ne chumvi mangeny.",
-        "weather_warning": "Kwer keto mbole e kinde mar koth mangeny ({} mm). Rit nyaka koth opung.",
         "model_error": "Tij mar model ok owinjore. Tum chwado ma yot.",
         "feedback_prompt": "Chwado nene yot nadi? (mfano, mabadiliko mar cham, matatizo)",
         "feedback_thanks": "Achieng ne maoni mari!",
@@ -162,7 +154,6 @@ translations = {
         "dealer_info": "- **{}** ({}) - Simu: {}",
         "error_data": "Ok nyal pako data ya mweri. Temo kendo bange.",
         "language_confirmation": "Ruthiomi rucagurwo kaka Kikuyu.",
-        "weather_info": "Hali ya hewa e Trans Nzoia: {}°C, mvua {} mm. {}",
         "footer": "SoilSync AI na Kibabii University | Kalro Data | Donjo: peter.barasa@kibu.ac.ke",
         "rec_ph_acidic": "Tumia **chokaa cha kilimo** (1–2 ton/ha) kurekebisha mweri wa tindikali (pH {:.2f}).",
         "rec_ph_alkaline": "Tumia **Ammonium Sulphate** (100–200 kg/ha) kupunguza mweri wa alkali (pH {:.2f}).",
@@ -173,7 +164,6 @@ translations = {
         "rec_boron": "Tumia **borax** (1–2 kg/ha) kwa boron.",
         "rec_organic": "Tumia **samadi (5–10 ton/ha)** koso **Mazao Organic** kuongeza vitu vya kikaboni.",
         "rec_salinity": "Tumia leaching na umwagiliaji na **Ammonium Sulphate** kushughulikia chumvi nyingi.",
-        "weather_warning": "Epuka kurutubisha kwa sababu ya mvua nyingi ({} mm). Subiri hali ya hewa kavu.",
         "model_error": "Ufundishaji wa modeli umeshindwa. Tumia mweri wa msingi.",
         "feedback_prompt": "Mweri ulikuwa na ufanisi gani? (mfano, mabadiliko ya mavuno, matatizo)",
         "feedback_thanks": "Asante kwa maoni yako!",
@@ -184,24 +174,6 @@ translations = {
         "param_stats": "Takwimu za Vigezo vya Mweri"
     }
 }
-
-# === FETCH WEATHER DATA FUNCTION ===
-def fetch_weather_data(lat=1.0167, lon=35.0023):
-    if WEATHER_API_KEY == "your_openweather_api_key":
-        logger.warning("Weather API key not set. Using default weather data.")
-        return {"temp": 25.0, "precipitation": 0, "description": "Clear (default data)"}
-    url = f"{WEATHER_API_URL}?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        temp = data["main"]["temp"]
-        precipitation = data.get("rain", {}).get("1h", 0)
-        description = data["weather"][0]["description"]
-        return {"temp": temp, "precipitation": precipitation, "description": description}
-    except Exception as e:
-        logger.error(f"Weather API error: {e}")
-        return {"temp": 25.0, "precipitation": 0, "description": "Clear (default data)"}
 
 # === TRAIN RANDOM FOREST MODEL ===
 def train_soil_model(soil_data):
@@ -398,7 +370,7 @@ def estimate_fertilizer_savings(recommendations):
     return savings
 
 # === FERTILIZER RECOMMENDATION FUNCTION FOR FARMERS ===
-def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, weather_data, lang="en"):
+def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, lang="en"):
     recommendations = []
     if soil_data is None or soil_data.empty:
         return [translations[lang]["no_data"]]
@@ -429,9 +401,6 @@ def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, weathe
         "Kukauka": ["potassium", "organic"],
         "Madoa ma majani": ["zinc", "boron"]
     }
-    
-    if weather_data and weather_data["precipitation"] > 10:
-        recommendations.append(translations[lang]["weather_warning"].format(weather_data["precipitation"]))
     
     if 'soil_pH' in avg_data and avg_data['soil_pH'] < 5.5:
         recommendations.append(translations[lang]["rec_ph_acidic"].format(avg_data['soil_pH']))
@@ -507,8 +476,6 @@ if 'dealer_data' not in st.session_state:
     st.session_state.dealer_data = None
 if 'merged_data' not in st.session_state:
     st.session_state.merged_data = None
-if 'weather_data' not in st.session_state:
-    st.session_state.weather_data = None
 if 'model' not in st.session_state:
     st.session_state.model = None
 if 'scaler' not in st.session_state:
@@ -531,8 +498,6 @@ if st.session_state.soil_data is None:
         constituencies = [unit["constituency"] for unit in trans_nzoia_units]
         wards = [unit["ward"] for unit in trans_nzoia_units]
         st.session_state.dealer_data = fetch_agrodealer_data("Trans Nzoia", constituencies, wards)
-    with st.spinner("Fetching weather data..."):
-        st.session_state.weather_data = fetch_weather_data()
     if st.session_state.soil_data is not None:
         st.session_state.merged_data = merge_soil_agrodealer_data(st.session_state.soil_data, st.session_state.dealer_data)
         st.session_state.model, st.session_state.scaler, st.session_state.features = train_soil_model(st.session_state.merged_data)
@@ -546,8 +511,6 @@ if user_type == translations["en"]["farmer"]:
     st.header(translations[lang_code]["farmer_header"])
     st.write(translations[lang_code]["farmer_instruction"])
     
-    st.image("https://via.placeholder.com/300x100?text=Crop+Symptoms", caption="Visual Guide for Crop Symptoms")
-    
     wards = ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
@@ -558,16 +521,9 @@ if user_type == translations["en"]["farmer"]:
         help="Choose all that apply to your maize crop."
     )
     
-    if st.session_state.weather_data:
-        st.write(translations[lang_code]["weather_info"].format(
-            st.session_state.weather_data["crop"],
-            st.session_state.weather_data["precipitation"],
-            st.session_state.weather_data["description"]
-        ))
-    
     if st.session_state.merged_data is not None:
         recommendations = get_fertilizer_recommendations_farmer(
-            st.session_state.merged_data, selected_ward, crop_symptoms, st.session_state.weather_data, lang=lang_code
+            st.session_state.merged_data, selected_ward, crop_symptoms, lang=lang_code
         )
         st.subheader(translations[lang_code]["recommendations_header"].format(selected_ward))
         for rec in recommendations:
@@ -616,7 +572,7 @@ if user_type == translations["en"]["farmer"]:
 # Researcher/Extension Officer Interface
 else:
     st.header(translations["en"]["researcher"])
-    st.write("Explore soil data, input soil parameters, and get model-based recommendations for Trans வநzoia maize farming.")
+    st.write("Explore soil data, input soil parameters, and get model-based recommendations for Trans Nzoia maize farming.")
     
     if st.session_state.merged_data is not None:
         wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist())
@@ -700,7 +656,7 @@ else:
                     "datasets": [{
                         "label": "Number of Wards",
                         "data": list(prediction_counts.values()),
-                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"],  # Green, Yellow, Red for high, medium, low
+                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"]
                     }]
                 },
                 "options": {
