@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import numpy as np
 import folium
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 import json
@@ -14,7 +14,7 @@ import logging
 API_TOKEN = "KLRDg3ElBVveVghcN61aScAJevKMgofJF7CWcsVwG2mYt0mUQF63DdB0n6OHqOo9WYCilH7bjJ6s9sIc4zT9zzeCyPXhvytRL4wMAtbV5fRxnAmLFtEI9KXO5tvnu0Pm3rwhAfx5tXGiQOKEm98U2lGTZOIVav2hRtGwsU8SrzUPpZA6CNSNCGkCNp3sndYsrAqeme9xsqFGNEla2PBgjZ0ertc6j8nzCVzUQ8gX2T9hFnR8SoKRA7eyRMHRMDrn"
 SOIL_API_URL = "https://farmerdb.kalro.org/api/SoilData/legacy/county"
 AGRODEALER_API_URL = "https://farmerdb.kalro.org/api/SoilData/agrodealers"
-WEATHER_API_KEY = "your_openweather_api_key"
+WEATHER_API_KEY = "your_openweather_api_key"  # Replace with actual key in production
 WEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # Set up logging
@@ -59,7 +59,9 @@ translations = {
         "feedback_thanks": "Thank you for your feedback!",
         "carbon_sequestration": "Estimated Carbon Sequestration: {:.2f} tons/ha/year",
         "yield_impact": "Estimated Yield Increase: {:.2f} tons/ha ({:.0f}%)",
-        "fertilizer_savings": "Fertilizer Waste Reduction: {:.1f}%"
+        "fertilizer_savings": "Fertilizer Waste Reduction: {:.1f}%",
+        "prediction_header": "Soil Fertility Predictions Across Wards",
+        "param_stats": "Soil Parameter Statistics"
     },
     "sw": {
         "title": "SoilSync AI: Mapendekezo ya Mbolea ya Usahihi kwa Mahindi",
@@ -97,7 +99,9 @@ translations = {
         "feedback_thanks": "Asante kwa maoni yako!",
         "carbon_sequestration": "Makadirio ya Uchukuzi wa Kaboni: {:.2f} tani/ha/mwaka",
         "yield_impact": "Makadirio ya Ongezeko la Mavuno: {:.2f} tani/ha ({:.0f}%)",
-        "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%"
+        "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%",
+        "prediction_header": "Mapendekezo ya Uzazi wa Udongo Katika Wadi",
+        "param_stats": "Takwimu za Vigezo vya Udongo"
     },
     "luo": {
         "title": "SoilSync AI: Chwado Maber marach mar Mbole",
@@ -109,7 +113,7 @@ translations = {
         "select_ward": "Yier Ward Mari",
         "select_language": "Yier Dho",
         "crop_state_header": "Nyis Kaka Cham Mari Neno",
-        "crop_symptoms": ["Ber marach", "Chamo ma ok omed", "Ber ma ok ochiek", "Ber ma ok omed", "Ber marach"],
+        "crop_symptoms": ["Majani me yelo", "Chamo ma ok omed", "Maua ma ok ochiek", "Kunyauka", "Madoa e majani"],
         "recommendations_header": "Chwado ne {}",
         "no_data": "Onge data marach mar mbole ma in.",
         "optimal_soil": "Gik ma in e lowo oromo ne cham.",
@@ -120,7 +124,7 @@ translations = {
         "language_confirmation": "Dho ochan kaka Luo.",
         "weather_info": "Hali mar koth e Trans Nzoia: {}°C, koth {} mm. {}",
         "footer": "SoilSync AI gi Kibabii University | Kalro Data | Donjo: peter.barasa@kibu.ac.ke",
-        "rec_ph_acidic": "Keto **chokaa** (1–2 ton/ha) mondo owinjore ne lowo ma rach (pH {:.2f}).",
+        "rec_ph_acidic": "Keto **chokaa** (1–2 ton/ha) mondo owin intelligible ne lowo ma rach (pH {:.2f}).",
         "rec_ph_alkaline": "Keto **Ammonium Sulphate** (100–200 kg/ha) mondo opung lowo (pH {:.2f}).",
         "rec_nitrogen": "Keto **DAP (100–150 kg/ha)** e kinde marach kendo **CAN (100–200 kg/ha)** koso **Urea (50–100 kg/ha)** ne nitrogen.",
         "rec_phosphorus": "Keto **DAP (100–150 kg/ha)** koso **TSP (100–150 kg/ha)** e kinde marach ne phosphorus.",
@@ -135,7 +139,9 @@ translations = {
         "feedback_thanks": "Achieng ne maoni mari!",
         "carbon_sequestration": "Makadirio mar Uchukuzi mar Kaboni: {:.2f} ton/ha/mwaka",
         "yield_impact": "Makadirio mar Ongezeko mar Cham: {:.2f} ton/ha ({:.0f}%)",
-        "fertilizer_savings": "Punguzo mar Mbole ma Opote: {:.1f}%"
+        "fertilizer_savings": "Punguzo mar Mbole ma Opote: {:.1f}%",
+        "prediction_header": "Mapendekezo mar Uzazi mar Lowo e Wadi",
+        "param_stats": "Takwimu mar Vigezo mar Lowo"
     },
     "kikuyu": {
         "title": "SoilSync AI: Mweri wa Mbole ya Mweri",
@@ -147,7 +153,7 @@ translations = {
         "select_ward": "Cagura Ward Yaku",
         "select_language": "Cagura Ruthiomi",
         "crop_state_header": "Ucie Wari wa Mboga Yaku",
-        "crop_symptoms": ["Mweri wa ngai", "Mweri wa ngai", "Mweri wa ngai", "Mweri wa ngai", "Mweri wa ngai"],
+        "crop_symptoms": ["Majani ya kuhonia", "Ukuaji umethukuma", "Maua mabaya", "Kukauka", "Madoa ma majani"],
         "recommendations_header": "Mweri wa {}",
         "no_data": "Hakuna data ya mweri wa mbole iku.",
         "optimal_soil": "Gikundi kia mweri kiri kawaida ya ngai.",
@@ -171,14 +177,19 @@ translations = {
         "model_error": "Ufundishaji wa modeli umeshindwa. Tumia mweri wa msingi.",
         "feedback_prompt": "Mweri ulikuwa na ufanisi gani? (mfano, mabadiliko ya mavuno, matatizo)",
         "feedback_thanks": "Asante kwa maoni yako!",
-        "carbon_sequestration": "Makadirio ya Uchukuzi wa Kaboni: {:.2f} ton/ha/mwaka",
-        "yield_impact": "Makadirio ya Ongezeko la Mavuno: {:.2f} ton/ha ({:.0f}%)",
-        "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%"
+        "carbon_sequestration": "Makadirio ya Uchukuzi wa Kaboni: {:.2f} tani/ha/mwaka",
+        "yield_impact": "Makadirio ya Ongezeko la Mavuno: {:.2f} tani/ha ({:.0f}%)",
+        "fertilizer_savings": "Punguzo la Upotevu wa Mbolea: {:.1f}%",
+        "prediction_header": "Mweri wa Uzazi wa Mweri e Wadi",
+        "param_stats": "Takwimu za Vigezo vya Mweri"
     }
 }
 
 # === FETCH WEATHER DATA FUNCTION ===
 def fetch_weather_data(lat=1.0167, lon=35.0023):
+    if WEATHER_API_KEY == "your_openweather_api_key":
+        logger.warning("Weather API key not set. Using default weather data.")
+        return {"temp": 25.0, "precipitation": 0, "description": "Clear (default data)"}
     url = f"{WEATHER_API_URL}?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
     try:
         response = requests.get(url)
@@ -190,7 +201,7 @@ def fetch_weather_data(lat=1.0167, lon=35.0023):
         return {"temp": temp, "precipitation": precipitation, "description": description}
     except Exception as e:
         logger.error(f"Weather API error: {e}")
-        return None
+        return {"temp": 25.0, "precipitation": 0, "description": "Clear (default data)"}
 
 # === TRAIN RANDOM FOREST MODEL ===
 def train_soil_model(soil_data):
@@ -204,8 +215,10 @@ def train_soil_model(soil_data):
         return None, None, []
     X = soil_data[features].dropna()
     if X.empty:
-        logger.warning("No data after dropping NaN values")
-        return None, None, features
+        logger.warning("No data after dropping NaN values. Using county-level averages.")
+        X = soil_data.groupby("County")[features].mean().reset_index()[features].dropna()
+        if X.empty:
+            return None, None, features
     y = []
     for _, row in X.iterrows():
         score = (
@@ -248,6 +261,21 @@ def predict_soil_fertility(model, scaler, features, input_data):
     except Exception as e:
         logger.error(f"Prediction error: {e}")
         return None, None
+
+# === PREDICT FOR ALL WARDS ===
+def predict_all_wards(soil_data, model, scaler, features):
+    predictions = []
+    if soil_data is None or model is None or scaler is None or not features:
+        return predictions
+    for ward in soil_data['Ward'].unique():
+        ward_data = soil_data[soil_data['Ward'] == ward]
+        if ward_data.empty:
+            continue
+        avg_data = ward_data[features].mean().to_dict()
+        prediction, _ = predict_soil_fertility(model, scaler, features, avg_data)
+        if prediction:
+            predictions.append({"Ward": ward, "Fertility": prediction})
+    return pd.DataFrame(predictions)
 
 # === FETCH SOIL DATA FUNCTION ===
 def fetch_soil_data(county_name, crop="maize"):
@@ -338,8 +366,8 @@ def merge_soil_agrodealer_data(soil_df, dealer_df):
             soil_df, dealer_df, on=["County", "Constituency", "Ward"],
             how="left", suffixes=("_soil", "_dealer")
         )
-        merged_df['Latitude'] = merged_df['Latitude_soil'].fillna(merged_df['Latitude_dealer'])
-        merged_df['Longitude'] = merged_df['Longitude_soil'].fillna(merged_df['Longitude_dealer'])
+        merged_df['Latitude'] = merged_df['Latitude_soil'].fillna(merged_df['Latitude_dealer']).infer_objects(copy=False)
+        merged_df['Longitude'] = merged_df['Longitude_soil'].fillna(merged_df['Longitude_dealer']).infer_objects(copy=False)
         merged_df = merged_df.drop(columns=['Latitude_soil', 'Longitude_soil', 'Latitude_dealer', 'Longitude_dealer'], errors='ignore')
         return merged_df
     except Exception as e:
@@ -352,20 +380,20 @@ def estimate_carbon_sequestration(soil_data, ward):
     if ward_data.empty or 'total_Org_Carbon_percent_' not in ward_data.columns:
         return 0.0
     organic_carbon = ward_data["total_Org_Carbon_percent_"].mean()
-    sequestration_rate = organic_carbon * 0.58  # Convert to CO2 equivalent
+    sequestration_rate = organic_carbon * 0.58
     return sequestration_rate
 
 # === ESTIMATE YIELD IMPACT ===
 def estimate_yield_impact(recommendations, ward_data):
     yield_increase = 0.15 if any("DAP" in rec for rec in recommendations) else 0.1
-    baseline_yield = ward_data["yield"].mean() if "yield" in ward_data.columns else 2.5  # tons/ha
+    baseline_yield = ward_data["yield"].mean() if "yield" in ward_data.columns else 2.5
     new_yield = baseline_yield * (1 + yield_increase)
     return new_yield - baseline_yield, yield_increase * 100
 
 # === ESTIMATE FERTILIZER SAVINGS ===
 def estimate_fertilizer_savings(recommendations):
-    conventional_rate = 200  # kg/ha
-    recommended_rate = sum([100 if "DAP" in rec else 0 for rec in recommendations])  # Simplified parsing
+    conventional_rate = 200
+    recommended_rate = sum([100 if "DAP" in rec else 0 for rec in recommendations])
     savings = (conventional_rate - recommended_rate) / conventional_rate * 100 if recommended_rate > 0 else 0
     return savings
 
@@ -390,11 +418,16 @@ def get_fertilizer_recommendations_farmer(soil_data, ward, crop_symptoms, weathe
         "Maua duni": ["phosphorus", "potassium"],
         "Kunyauka": ["potassium", "organic"],
         "Madoa kwenye majani": ["zinc", "boron"],
-        "Ber marach": ["nitrogen", "zinc"],
+        "Majani me yelo": ["nitrogen", "zinc"],
         "Chamo ma ok omed": ["nitrogen", "phosphorus", "potassium"],
-        "Ber ma ok ochiek": ["phosphorus", "potassium"],
-        "Ber ma ok omed": ["potassium", "organic"],
-        "Mweri wa ngai": ["nitrogen", "zinc"]
+        "Maua ma ok ochiek": ["phosphorus", "potassium"],
+        "Kunyauka": ["potassium", "organic"],
+        "Madoa e majani": ["zinc", "boron"],
+        "Majani ya kuhonia": ["nitrogen", "zinc"],
+        "Ukuaji umethukuma": ["nitrogen", "phosphorus", "potassium"],
+        "Maua mabaya": ["phosphorus", "potassium"],
+        "Kukauka": ["potassium", "organic"],
+        "Madoa ma majani": ["zinc", "boron"]
     }
     
     if weather_data and weather_data["precipitation"] > 10:
@@ -502,11 +535,10 @@ if st.session_state.soil_data is None:
         st.session_state.weather_data = fetch_weather_data()
     if st.session_state.soil_data is not None:
         st.session_state.merged_data = merge_soil_agrodealer_data(st.session_state.soil_data, st.session_state.dealer_data)
-        st.session_state.model, st.session_state.scaler, st.session_state.features = train_soil_model(st.session_state.soil_data)
+        st.session_state.model, st.session_state.scaler, st.session_state.features = train_soil_model(st.session_state.merged_data)
 
 # Farmer Interface
 if user_type == translations["en"]["farmer"]:
-    # Language Selection
     lang = st.sidebar.selectbox(translations["en"]["select_language"], ["English", "Swahili", "Luo", "Kikuyu"], key="language")
     lang_code = {"English": "en", "Swahili": "sw", "Luo": "luo", "Kikuyu": "kikuyu"}[lang]
     st.sidebar.write(translations[lang_code]["language_confirmation"])
@@ -514,14 +546,11 @@ if user_type == translations["en"]["farmer"]:
     st.header(translations[lang_code]["farmer_header"])
     st.write(translations[lang_code]["farmer_instruction"])
     
-    # Visual Aid for Mobile Optimization
     st.image("https://via.placeholder.com/300x100?text=Crop+Symptoms", caption="Visual Guide for Crop Symptoms")
     
-    # Ward Selection
     wards = ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
-    # Crop State Input
     st.subheader(translations[lang_code]["crop_state_header"])
     crop_symptoms = st.multiselect(
         "Select observed crop symptoms",
@@ -529,10 +558,9 @@ if user_type == translations["en"]["farmer"]:
         help="Choose all that apply to your maize crop."
     )
     
-    # Weather Information
     if st.session_state.weather_data:
         st.write(translations[lang_code]["weather_info"].format(
-            st.session_state.weather_data["temp"],
+            st.session_state.weather_data["crop"],
             st.session_state.weather_data["precipitation"],
             st.session_state.weather_data["description"]
         ))
@@ -545,19 +573,15 @@ if user_type == translations["en"]["farmer"]:
         for rec in recommendations:
             st.markdown(f"- {rec}")
         
-        # Carbon Sequestration
         sequestration_rate = estimate_carbon_sequestration(st.session_state.merged_data, selected_ward)
         st.write(translations[lang_code]["carbon_sequestration"].format(sequestration_rate))
         
-        # Yield Impact
         yield_increase, yield_pct = estimate_yield_impact(recommendations, st.session_state.merged_data[st.session_state.merged_data["Ward"] == selected_ward])
         st.write(translations[lang_code]["yield_impact"].format(yield_increase, yield_pct))
         
-        # Fertilizer Savings
         savings = estimate_fertilizer_savings(recommendations)
         st.write(translations[lang_code]["fertilizer_savings"].format(savings))
         
-        # Agro-Dealer Information
         st.subheader(translations[lang_code]["dealers_header"])
         if st.session_state.dealer_data is not None:
             dealers = st.session_state.dealer_data[st.session_state.dealer_data['Ward'] == selected_ward]
@@ -574,17 +598,15 @@ if user_type == translations["en"]["farmer"]:
                             popup=f"{dealer['agrodealerName']} ({dealer['market']})",
                             icon=folium.Icon(color="green")
                         ).add_to(m)
-                folium_static(m)
+                st_folium(m, width=700, height=500)
             else:
                 st.write(translations[lang_code]["dealers_none"])
         
-        # Feedback Form
         st.subheader("Provide Feedback")
         with st.form("feedback_form"):
             feedback = st.text_area(translations[lang_code]["feedback_prompt"])
             submit_feedback = st.form_submit_button("Submit Feedback")
             if submit_feedback and feedback:
-                # Placeholder for feedback storage (e.g., save to file or database)
                 with open("feedback.txt", "a") as f:
                     f.write(f"{selected_ward},{feedback},{datetime.now()}\n")
                 st.success(translations[lang_code]["feedback_thanks"])
@@ -594,10 +616,12 @@ if user_type == translations["en"]["farmer"]:
 # Researcher/Extension Officer Interface
 else:
     st.header(translations["en"]["researcher"])
-    st.write("Explore soil data, input soil parameters, and get model-based recommendations for Trans Nzoia maize farming.")
+    st.write("Explore soil data, input soil parameters, and get model-based recommendations for Trans வநzoia maize farming.")
     
     if st.session_state.merged_data is not None:
-        wards = st.session_state.merged_data['Ward'].unique().tolist()
+        wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist())
+        if not wards:
+            wards = ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
         selected_ward = st.selectbox("Select Ward for Analysis", wards)
         ward_data = st.session_state.merged_data[st.session_state.merged_data['Ward'] == selected_ward]
         
@@ -624,7 +648,7 @@ else:
             st.write(advice)
         
         # Soil Parameter Statistics
-        st.subheader("Soil Parameter Statistics (Historical Data)")
+        st.subheader(translations["en"]["param_stats"])
         key_params = [
             "soil_pH", "total_Nitrogen_percent_", "total_Org_Carbon_percent_",
             "phosphorus_Olsen_ppm", "potassium_meq_percent_", "zinc_ppm", "boron_ppm",
@@ -637,7 +661,6 @@ else:
             param = st.selectbox("Select Parameter to Visualize", key_params)
             chart_data = ward_data[param].dropna()
             if not chart_data.empty:
-                # Interactive Chart.js visualization
                 chart_config = {
                     "type": "bar",
                     "data": {
@@ -649,7 +672,7 @@ else:
                         }]
                     },
                     "options": {
-                        "responsive": true,
+                        "responsive": True,
                         "scales": {
                             "y": {
                                 "beginAtZero": False,
@@ -663,6 +686,40 @@ else:
                 }
                 st.write("Interactive Soil Parameter Chart")
                 st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
+        
+        # Soil Fertility Predictions Across Wards
+        st.subheader(translations["en"]["prediction_header"])
+        predictions_df = predict_all_wards(st.session_state.merged_data, st.session_state.model, st.session_state.scaler, st.session_state.features)
+        if not predictions_df.empty:
+            st.write(predictions_df)
+            prediction_counts = predictions_df['Fertility'].value_counts().to_dict()
+            chart_config = {
+                "type": "bar",
+                "data": {
+                    "labels": list(prediction_counts.keys()),
+                    "datasets": [{
+                        "label": "Number of Wards",
+                        "data": list(prediction_counts.values()),
+                        "backgroundColor": ["#2ecc71", "#f1c40f", "#e74c3c"],  # Green, Yellow, Red for high, medium, low
+                    }]
+                },
+                "options": {
+                    "responsive": True,
+                    "scales": {
+                        "y": {
+                            "beginAtZero": True,
+                            "title": {"display": True, "text": "Number of Wards"}
+                        },
+                        "x": {
+                            "title": {"display": True, "text": "Fertility Level"}
+                        }
+                    }
+                }
+            }
+            st.write("Soil Fertility Distribution Across Wards")
+            st.markdown(f"```chartjs\n{json.dumps(chart_config, indent=2)}\n```")
+        else:
+            st.write("No predictions available due to missing model or data.")
         
         # Agro-Dealer Information
         st.subheader("Agro-Dealer Network")
@@ -678,7 +735,7 @@ else:
                             popup=f"{dealer['agrodealerName']} ({dealer['market']})",
                             icon=folium.Icon(color="green")
                         ).add_to(m)
-                folium_static(m)
+                st_folium(m, width=700, height=500)
             else:
                 st.write("No agro-dealers found for this ward.")
         
