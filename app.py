@@ -38,7 +38,7 @@ translations = {
         "optimal_soil": "Soil parameters are within optimal ranges for maize.",
         "dealers_header": "Where to Buy Fertilizers",
         "dealers_none": "No agro-dealers found for this ward. Check county-level suppliers in Kitale or Kwanza markets.",
-        "dealer_info": "- **{}** ({}) - Phone: {}",
+        "dealer_info": "- **{}** ({}) - Phone: {} - GPS: ({:.4f}, {:.4f})",
         "error_data": "Unable to load soil data. Please try again later.",
         "language_confirmation": "Language set to English.",
         "footer": "SoilSync AI by Kibabii University | Powered by KALRO Data | Contact: peter.barasa@kibu.ac.ke",
@@ -84,7 +84,7 @@ translations = {
         "optimal_soil": "Vigezo vya udongo viko ndani ya viwango bora kwa mahindi.",
         "dealers_header": "Wapi pa Kununua Mbolea",
         "dealers_none": "Hakuna wauzaji wa mbolea waliopatikana kwa wadi hii. Angalia wauzaji wa ngazi ya kaunti katika soko za Kitale au Kwanza.",
-        "dealer_info": "- **{}** ({}) - Simu: {}",
+        "dealer_info": "- **{}** ({}) - Simu: {} - GPS: ({:.4f}, {:.4f})",
         "error_data": "Imeshindwa kupakia data ya udongo. Tafadhali jaribu tena baadaye.",
         "language_confirmation": "Lugha imewekwa kwa Kiswahili.",
         "footer": "SoilSync AI na Chuo Kikuu cha Kibabii | Inatumia Data ya KALRO | Wasiliana: peter.barasa@kibu.ac.ke",
@@ -137,8 +137,7 @@ def fetch_soil_data(county_name, crop="maize"):
             maize_mask = df_filtered["crop"].str.lower().str.contains(crop.lower(), na=False)
             df_filtered = df_filtered[maize_mask]
         core_params = [
-            "soil_pH", "total_Nitrogen_percent_", "total_Org_Carbon_percent_",
-            "phosphorus_Olsen_ppm", "potassium_meq_percent_"
+            "soil_pH", "total_Nitrogen_percent_", "phosphorus_Olsen_ppm", "potassium_meq_percent_"
         ]
         core_params = [col for col in core_params if col in df_filtered.columns]
         df_filtered = df_filtered.dropna(subset=core_params, how='any')
@@ -210,8 +209,8 @@ def merge_soil_agrodealer_data(soil_df, dealer_df):
             soil_df, dealer_df, on=["County", "Constituency", "Ward"],
             how="left", suffixes=("_soil", "_dealer")
         )
-        merged_df['Latitude'] = merged_df['Latitude_soil'].combine_first(merged_df['Latitude_dealer'])
-        merged_df['Longitude'] = merged_df['Longitude_soil'].combine_first(merged_df['Longitude_dealer'])
+        merged_df['Latitude'] = merged_df['Latitude_soil'].fillna(merged_df['Latitude_dealer'])
+        merged_df['Longitude'] = merged_df['Longitude_soil'].fillna(merged_df['Longitude_dealer'])
         merged_df = merged_df.drop(columns=['Latitude_soil', 'Longitude_soil', 'Latitude_dealer', 'Longitude_dealer'], errors='ignore')
         logger.info(f"Merged dataset contains {len(merged_df)} records")
         return merged_df
@@ -229,9 +228,14 @@ def train_soil_model(soil_data):
     if not features:
         logger.warning("No valid features in soil data")
         return None, None, []
-    X = soil_data[features].dropna()
+    X = soil_data[features].copy()
+    # Impute missing values for optional features
+    for col in ["zinc_ppm", "boron_ppm"]:
+        if col in X.columns:
+            X[col] = X[col].fillna(X[col].mean())
+    X = X.dropna(subset=["soil_pH", "total_Nitrogen_percent_", "phosphorus_Olsen_ppm", "potassium_meq_percent_"])
     if X.empty:
-        logger.warning("No data after dropping NaN values")
+        logger.warning("No data after dropping core NaN values")
         return None, None, features
     y = []
     for _, row in X.iterrows():
@@ -267,6 +271,9 @@ def predict_soil_fertility(model, scaler, features, input_data):
         return None, None
     try:
         input_df = pd.DataFrame([input_data], columns=features)
+        for col in ["zinc_ppm", "boron_ppm"]:
+            if col in input_df.columns and pd.isna(input_df[col].iloc[0]):
+                input_df[col] = input_df[col].fillna(input_df[col].mean())
         input_scaled = scaler.transform(input_df)
         prediction = model.predict(input_scaled)[0]
         importance = model.feature_importances_
@@ -287,6 +294,9 @@ def predict_all_wards(soil_data, model, scaler, features):
         if ward_data.empty:
             continue
         avg_data = ward_data[features].mean().to_dict()
+        for col in ["zinc_ppm", "boron_ppm"]:
+            if col in avg_data and pd.isna(avg_data[col]):
+                avg_data[col] = ward_data[col].mean() if not ward_data[col].isna().all() else 0
         prediction, _ = predict_soil_fertility(model, scaler, features, avg_data)
         if prediction:
             predictions.append({"Ward": ward, "Fertility": prediction})
@@ -298,7 +308,7 @@ def estimate_carbon_sequestration(soil_data, ward):
     if ward_data.empty or 'total_Org_Carbon_percent_' not in ward_data.columns:
         return 0.0
     organic_carbon = ward_data["total_Org_Carbon_percent_"].mean()
-    sequestration_rate = organic_carbon * 0.58  # Based on proposal's 0.4 tons/ha/year average
+    sequestration_rate = organic_carbon * 0.58
     return sequestration_rate
 
 # === ESTIMATE YIELD IMPACT ===
@@ -493,10 +503,18 @@ if st.session_state.soil_data is None:
     with st.spinner("Fetching agro-dealer data..."):
         trans_nzoia_units = [
             {"constituency": "Kiminini", "ward": "Sirende"},
+            {"constituency": "Kiminini", "ward": "Kiminini"},
+            {"constituency": "Kiminini", "ward": "Waitaluk"},
             {"constituency": "Trans Nzoia East", "ward": "Chepsiro/Kiptoror"},
             {"constituency": "Trans Nzoia East", "ward": "Sitatunga"},
+            {"constituency": "Trans Nzoia East", "ward": "Kapsara"},
             {"constituency": "Kwanza", "ward": "Kapomboi"},
-            {"constituency": "Kwanza", "ward": "Kwanza"}
+            {"constituency": "Kwanza", "ward": "Kwanza"},
+            {"constituency": "Kwanza", "ward": "Keiyo"},
+            {"constituency": "Saboti", "ward": "Kinyoro"},
+            {"constituency": "Saboti", "ward": "Matisi"},
+            {"constituency": "Cherangany", "ward": "Sinyerere"},
+            {"constituency": "Cherangany", "ward": "Makutano"}
         ]
         constituencies = [unit["constituency"] for unit in trans_nzoia_units]
         wards = [unit["ward"] for unit in trans_nzoia_units]
@@ -514,7 +532,10 @@ if user_type == translations["en"]["farmer"]:
     st.header(translations[lang_code]["farmer_header"])
     st.write(translations[lang_code]["farmer_instruction"])
     
-    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
+    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else [
+        "Sirende", "Kiminini", "Waitaluk", "Chepsiro/Kiptoror", "Sitatunga", "Kapsara",
+        "Kapomboi", "Kwanza", "Keiyo", "Kinyoro", "Matisi", "Sinyerere", "Makutano"
+    ]
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
     st.subheader(translations[lang_code]["crop_state_header"])
@@ -545,16 +566,18 @@ if user_type == translations["en"]["farmer"]:
         if st.session_state.dealer_data is not None:
             dealers = st.session_state.dealer_data[st.session_state.dealer_data['Ward'] == selected_ward]
             if not dealers.empty:
-                st.write(translations[lang_code]["dealers_header"] + ":")
+                st.write("**Available Agro-Dealers**:")
                 for _, dealer in dealers.iterrows():
                     st.write(translations[lang_code]["dealer_info"].format(
-                        dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A')))
+                        dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A'),
+                        dealer['Latitude'], dealer['Longitude']
+                    ))
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
                     if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
                         folium.Marker(
                             [dealer['Latitude'], dealer['Longitude']],
-                            popup=f"{dealer['agrodealerName']} ({dealer['market']})",
+                            popup=f"{dealer['agrodealerName']} ({dealer['market']}) - Phone: {dealer.get('agrodealerPhone', 'N/A')}",
                             icon=folium.Icon(color="green")
                         ).add_to(m)
                 st_folium(m, width=700, height=500)
@@ -746,7 +769,10 @@ elif user_type == translations["en"]["extension_officer"]:
     st.header(translations[lang_code]["extension_header"])
     st.write(translations[lang_code]["extension_instruction"])
     
-    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else ["Sirende", "Chepsiro/Kiptoror", "Sitatunga", "Kapomboi", "Kwanza"]
+    wards = sorted(st.session_state.merged_data['Ward'].dropna().unique().tolist()) if st.session_state.merged_data is not None else [
+        "Sirende", "Kiminini", "Waitaluk", "Chepsiro/Kiptoror", "Sitatunga", "Kapsara",
+        "Kapomboi", "Kwanza", "Keiyo", "Kinyoro", "Matisi", "Sinyerere", "Makutano"
+    ]
     selected_ward = st.selectbox(translations[lang_code]["select_ward"], wards)
     
     st.subheader(translations[lang_code]["farmer_issues"])
@@ -794,13 +820,15 @@ elif user_type == translations["en"]["extension_officer"]:
                 st.write("Available Agro-Dealers:")
                 for _, dealer in dealers.iterrows():
                     st.write(translations[lang_code]["dealer_info"].format(
-                        dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A')))
+                        dealer['agrodealerName'], dealer['market'], dealer.get('agrodealerPhone', 'N/A'),
+                        dealer['Latitude'], dealer['Longitude']
+                    ))
                 m = folium.Map(location=[dealers['Latitude'].mean(), dealers['Longitude'].mean()], zoom_start=12)
                 for _, dealer in dealers.iterrows():
                     if pd.notnull(dealer['Latitude']) and pd.notnull(dealer['Longitude']):
                         folium.Marker(
                             [dealer['Latitude'], dealer['Longitude']],
-                            popup=f"{dealer['agrodealerName']} ({dealer['market']})",
+                            popup=f"{dealer['agrodealerName']} ({dealer['market']}) - Phone: {dealer.get('agrodealerPhone', 'N/A')}",
                             icon=folium.Icon(color="green")
                         ).add_to(m)
                 st_folium(m, width=700, height=500)
