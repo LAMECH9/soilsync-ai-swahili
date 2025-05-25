@@ -3,7 +3,7 @@
 def load_and_preprocess_data(source="github"):
     try:
         if source == "github":
-            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai/main/cleaned_soilsync_dataset.csv"
+            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai-swahili/main/cleaned_soilsync_dataset.csv"
             response = requests.get(github_raw_url)
             if response.status_code == 404:
                 return None, None, None, None
