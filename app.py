@@ -28,7 +28,7 @@ def load_and_preprocess_data(source="github"):
     try:
         if source == "github":
             # Replace with the raw URL of the dataset in your GitHub repository
-            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai/main/cleaned_soilsync_dataset.csv"
+            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai-swahili/main/cleaned_soilsync_dataset.csv"
             response = requests.get(github_raw_url)
             response.raise_for_status()  # Raise an error if the request fails
             df = pd.read_csv(io.StringIO(response.text))
