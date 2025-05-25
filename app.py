@@ -17,15 +17,24 @@ from gtts import gTTS
 import io
 import base64
 import os
+import requests
 
 # Set random seed
 np.random.seed(42)
 
 # Cache data loading and preprocessing
 @st.cache_data
-def load_and_preprocess_data(file):
+def load_and_preprocess_data(source="github"):
     try:
-        df = pd.read_csv(file)
+        if source == "github":
+            # Replace with the raw URL of the dataset in your GitHub repository
+            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai/main/cleaned_soilsync_dataset.csv"
+            response = requests.get(github_raw_url)
+            response.raise_for_status()  # Raise an error if the request fails
+            df = pd.read_csv(io.StringIO(response.text))
+        else:
+            df = pd.read_csv(source)
+
         features = ['soil ph', 'total nitrogen', 'phosphorus olsen', 'potassium meq', 
                     'calcium meq', 'magnesium meq', 'manganese meq', 'copper', 'iron', 
                     'zinc', 'sodium meq', 'total org carbon']
@@ -52,8 +61,18 @@ def load_and_preprocess_data(file):
             st.warning("NaN in encoded targets. Dropping affected rows.")
             df = df.dropna(subset=[col for col in [target_nitrogen, target_phosphorus] if col in df.columns])
 
+        # Check if 'county' column exists; if not, create dummy counties
         if 'county' not in df.columns:
             df['county'] = [f"County{i+1}" for i in range(len(df))]
+        
+        # Map placeholder counties to real Kenyan counties if necessary
+        kenyan_counties = [
+            "Kajiado", "Narok", "Nakuru", "Kiambu", "Machakos", "Murang'a", 
+            "Nyeri", "Kitui", "Embu", "Meru", "Tharaka Nithi", "Laikipia"
+        ]
+        if df['county'].str.contains("County").any():
+            county_mapping = {f"County{i+1}": kenyan_counties[i % len(kenyan_counties)] for i in range(len(df))}
+            df['county'] = df['county'].map(county_mapping).fillna(df['county'])
 
         return df, features, target_nitrogen, target_phosphorus
     except Exception as e:
@@ -283,13 +302,22 @@ def match_recommendations(generated, dataset):
                 return True
     return False
 
-# Simulate GPS coordinates
+# Simulate GPS coordinates for Kenyan counties
 def generate_gps(county):
-    # Simulated GPS ranges for counties (latitude, longitude)
+    # Approximate GPS ranges for Kenyan counties (latitude, longitude)
     county_gps_ranges = {
-        "County1": {"lat": (0.5, 1.0), "lon": (36.5, 37.0)},
-        "County2": {"lat": (-0.5, 0.0), "lon": (37.0, 37.5)},
-        # Add more counties as needed
+        "Kajiado": {"lat": (-2.0, -1.5), "lon": (36.5, 37.0)},
+        "Narok": {"lat": (-1.5, -0.5), "lon": (35.5, 36.0)},
+        "Nakuru": {"lat": (-0.5, 0.0), "lon": (36.0, 36.5)},
+        "Kiambu": {"lat": (-1.2, -0.8), "lon": (36.7, 37.0)},
+        "Machakos": {"lat": (-1.8, -1.3), "lon": (37.0, 37.5)},
+        "Murang'a": {"lat": (-0.9, -0.5), "lon": (37.0, 37.3)},
+        "Nyeri": {"lat": (-0.5, 0.0), "lon": (36.8, 37.2)},
+        "Kitui": {"lat": (-2.0, -1.0), "lon": (37.8, 38.5)},
+        "Embu": {"lat": (-0.7, -0.3), "lon": (37.4, 37.8)},
+        "Meru": {"lat": (-0.1, 0.5), "lon": (37.5, 38.0)},
+        "Tharaka Nithi": {"lat": (-0.4, 0.0), "lon": (37.7, 38.0)},
+        "Laikipia": {"lat": (0.0, 0.5), "lon": (36.5, 37.0)},
         "Unknown": {"lat": (-1.0, 1.0), "lon": (36.0, 38.0)}
     }
     ranges = county_gps_ranges.get(county, county_gps_ranges["Unknown"])
@@ -375,7 +403,7 @@ st.sidebar.header("Navigation / Urambazaji / Kũrambaza")
 if user_type.startswith("Farmer"):
     language = st.sidebar.selectbox("Select Language / Chagua Lugha / Cagũra Rũthi:", 
                                     ["English", "Kiswahili", "Kikuyu"])
-    page = st.sidebar.radio(f"{translations[language]['select_county']} / {translations[language]['select_county']} / {translations[language]['select_county']}:", 
+    page = st.sidebar.radio(f"{translations[language]['select_county']}:", 
                             ["Farmer Dashboard", "Home"])
 else:
     language = "English"
@@ -383,19 +411,39 @@ else:
                             ["Home", "Data Upload & Training", "Predictions & Recommendations", 
                              "Field Trials", "Visualizations"])
 
+# Load dataset for farmer interface
+if user_type.startswith("Farmer"):
+    df, features, target_nitrogen, target_phosphorus = load_and_preprocess_data(source="github")
+    if df is not None and (not hasattr(st.session_state, 'df') or st.session_state.df is None):
+        # Train models automatically for farmer interface
+        (best_rf_nitrogen, rf_phosphorus, scaler, selector, feature_columns, 
+         nitrogen_accuracy, phosphorus_accuracy, avg_accuracy, cv_scores, 
+         selected_features) = train_models(df, features, target_nitrogen, target_phosphorus)
+        
+        st.session_state['best_rf_nitrogen'] = best_rf_nitrogen
+        st.session_state['rf_phosphorus'] = rf_phosphorus
+        st.session_state['scaler'] = scaler
+        st.session_state['selector'] = selector
+        st.session_state['feature_columns'] = feature_columns
+        st.session_state['df'] = df
+        st.session_state['features'] = features
+        st.session_state['avg_accuracy'] = avg_accuracy
+
 # Farmer Dashboard
 if user_type.startswith("Farmer") and page == "Farmer Dashboard":
     st.header(f"Farmer Dashboard / Dashibodi ya Mkulima / Dashboard ya Mũrĩmi")
     st.markdown(translations[language]["welcome"])
     st.markdown(translations[language]["instructions"])
 
-    if 'best_rf_nitrogen' not in st.session_state or 'df' not in st.session_state:
-        st.error("Please wait for the models to be trained by an institutional user in the 'Data Upload & Training' section.")
+    if 'best_rf_nitrogen' not in st.session_state or 'df' not in st.session_state or st.session_state.df is None:
+        st.error("Unable to load data or train models. Please ensure the dataset is available and try again.")
     else:
-        st.subheader(f"{translations[language]['select_county']} / {translations[language]['select_county']} / {translations[language]['select_county']}")
+        st.subheader(f"{translations[language]['select_county']}")
         with st.form("farmer_input_form"):
+            # Dynamically populate county dropdown from dataset
+            county_options = sorted(st.session_state['df']['county'].unique())
             county = st.selectbox(translations[language]["select_county"], 
-                                  options=st.session_state['df']['county'].unique() if 'county' in st.session_state['df'].columns else ["Unknown"])
+                                  options=county_options if county_options else ["Unknown"])
             crop_type = st.selectbox(translations[language]["select_crop"], 
                                      options=["Maize / Mahindi / Mũgĩta", 
                                               "Beans / Maharagwe / Mĩanga", 
@@ -454,7 +502,7 @@ if page == "Home":
     - **Data Coverage**: 47% improvement via transfer learning and farmer observations.
     """)
 
-# Institutional Interface
+# Institutional Interface (unchanged)
 if user_type.startswith("Institution"):
     if page == "Data Upload & Training":
         st.header("Upload Dataset & Train Models")
