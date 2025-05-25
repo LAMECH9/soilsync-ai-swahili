@@ -1,0 +1,1 @@
+[server]port = 8501[client]showErrorDetails = true[global]pythonVersion = "3.11"
