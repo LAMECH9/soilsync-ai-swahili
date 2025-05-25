@@ -68,7 +68,7 @@ def load_and_preprocess_data(source="github"):
 
         features = ['soil ph', 'total nitrogen', 'phosphorus olsen', 'potassium meq', 
                     'calcium meq', 'magnesium meq', 'manganese meq', 'copper', 'iron', 
-                    ' обуслов: 'zinc', 'sodium meq', 'total org carbon']
+                    ' 'zinc', 'sodium meq', 'total org carbon']
         target_nitrogen = 'total nitrogenclass'
         target_phosphorus = 'phosphorus olsen class'
 
