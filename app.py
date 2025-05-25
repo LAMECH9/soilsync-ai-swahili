@@ -27,10 +27,11 @@ np.random.seed(42)
 def load_and_preprocess_data(source="github"):
     try:
         if source == "github":
-            # Replace with the raw URL of the dataset in your GitHub repository
-            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai/main/cleaned_soilsync_dataset.csv"
+            github_raw_url = "https://raw.githubusercontent.com/lamech9/soil-ai-swahili/main/cleaned_soilsync_dataset.csv"
             response = requests.get(github_raw_url)
-            response.raise_for_status()  # Raise an error if the request fails
+            if response.status_code == 404:
+                return None, None, None, None
+            response.raise_for_status()
             df = pd.read_csv(io.StringIO(response.text))
         else:
             df = pd.read_csv(source)
@@ -40,10 +41,6 @@ def load_and_preprocess_data(source="github"):
                     'zinc', 'sodium meq', 'total org carbon']
         target_nitrogen = 'total nitrogenclass'
         target_phosphorus = 'phosphorus olsen class'
-
-        st.write("Missing values before preprocessing:")
-        missing_cols = [col for col in features + [target_nitrogen, target_phosphorus] if col in df.columns]
-        st.write(df[missing_cols].isnull().sum())
 
         required_cols = [col for col in [target_nitrogen, target_phosphorus] if col in df.columns]
         df = df.dropna(subset=[col for col in features if col in df.columns] + required_cols)
@@ -58,14 +55,11 @@ def load_and_preprocess_data(source="github"):
 
         if (target_nitrogen in df.columns and df[target_nitrogen].isnull().any()) or \
            (target_phosphorus in df.columns and df[target_phosphorus].isnull().any()):
-            st.warning("NaN in encoded targets. Dropping affected rows.")
             df = df.dropna(subset=[col for col in [target_nitrogen, target_phosphorus] if col in df.columns])
 
-        # Check if 'county' column exists; if not, create dummy counties
         if 'county' not in df.columns:
             df['county'] = [f"County{i+1}" for i in range(len(df))]
-        
-        # Map placeholder counties to real Kenyan counties if necessary
+
         kenyan_counties = [
             "Kajiado", "Narok", "Nakuru", "Kiambu", "Machakos", "Murang'a", 
             "Nyeri", "Kitui", "Embu", "Meru", "Tharaka Nithi", "Laikipia"
@@ -76,7 +70,6 @@ def load_and_preprocess_data(source="github"):
 
         return df, features, target_nitrogen, target_phosphorus
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
         return None, None, None, None
 
 # Cache model training
@@ -120,8 +113,6 @@ def train_models(df, features, target_nitrogen, target_phosphorus):
             y_phosphorus = y_phosphorus.reset_index(drop=True)
 
         if y_nitrogen is not None:
-            st.write("Class distribution for total nitrogenclass:")
-            st.write(y_nitrogen.value_counts(normalize=True))
             smote = SMOTE(random_state=42)
             X_combined_n, y_nitrogen_balanced = smote.fit_resample(X_combined, y_nitrogen)
             X_train_n, X_test_n, y_train_n, y_test_n = train_test_split(
@@ -133,7 +124,6 @@ def train_models(df, features, target_nitrogen, target_phosphorus):
             X_train_n_selected = selector.transform(X_train_n)
             X_test_n_selected = selector.transform(X_test_n)
             selected_features = X_combined.columns[selector.get_support()].tolist()
-            st.write("Selected features for nitrogen:", selected_features)
             param_grid = {
                 'n_estimators': [100, 200],
                 'max_depth': [10, 20, None],
@@ -166,15 +156,15 @@ def train_models(df, features, target_nitrogen, target_phosphorus):
         return (best_rf_nitrogen, rf_phosphorus, scaler, selector, X_combined.columns,
                 nitrogen_accuracy, phosphorus_accuracy, avg_accuracy, cv_scores, selected_features)
     except Exception as e:
-        st.error(f"Error training models: {str(e)}")
         return None, None, None, None, None, 0.0, 0.0, 0.0, [], []
 
 # Translation dictionaries
 translations = {
     "English": {
         "welcome": "Welcome, farmer! Use this dashboard to get simple recommendations for your farm.",
-        "instructions": "Enter your location, crop type, and any visible symptoms to receive tailored advice.",
+        "instructions": "Select your county, ward, crop type, and any visible symptoms to receive tailored advice.",
         "select_county": "Select Your County",
+        "select_ward": "Select Your Ward",
         "select_crop": "Select Crop Type",
         "select_symptoms": "Select Visible Symptoms (if any)",
         "yellowing_leaves": "Yellowing leaves",
@@ -184,14 +174,15 @@ translations = {
         "get_recommendations": "Get Recommendations",
         "nitrogen_status": "Nitrogen Status",
         "phosphorus_status": "Phosphorus Status",
-        "recommendation": "Recommendation for {crop} in {county}",
+        "recommendation": "Recommendation for {crop} in {county}, {ward}",
         "sms_output": "SMS Version (for mobile)",
-        "generate_gps": "Generate GPS Coordinates",
+        "gps_coordinates": "GPS Coordinates",
         "read_aloud": "Read Recommendations Aloud",
         "low": "low",
         "adequate": "adequate",
         "high": "high",
         "unknown": "unknown",
+        "error_message": "Unable to process your request. Please try again later or contact support.",
         "recommendations": {
             "nitrogen_low": "Apply 100 kg/acre of N:P:K 23:23:0 at planting. Top dress with 50 kg/acre CAN.",
             "phosphorus_low": "Apply 75 kg/acre of triple superphosphate (TSP) at planting.",
@@ -202,8 +193,9 @@ translations = {
     },
     "Kiswahili": {
         "welcome": "Karibu, mkulima! Tumia dashibodi hii kupata mapendekezo rahisi kwa shamba lako.",
-        "instructions": "Ingiza eneo lako, aina ya zao, na dalili zozote zinazoonekana kupata ushauri wa kibinafsi.",
+        "instructions": "Chagua kaunti yako, wadi, aina ya zao, na dalili zozote zinazoonekana kupata ushauri wa kibinafsi.",
         "select_county": "Chagua Kaunti Yako",
+        "select_ward": "Chagua Wadi Yako",
         "select_crop": "Chagua Aina ya Zao",
         "select_symptoms": "Chagua Dalili Zinazoonekana (ikiwa zipo)",
         "yellowing_leaves": "Majani yanayofifia manjano",
@@ -213,14 +205,15 @@ translations = {
         "get_recommendations": "Pata Mapendekezo",
         "nitrogen_status": "Hali ya Nitrojeni",
         "phosphorus_status": "Hali ya Fosforasi",
-        "recommendation": "Mapendekezo kwa {crop} katika {county}",
+        "recommendation": "Mapendekezo kwa {crop} katika {county}, {ward}",
         "sms_output": "Toleo la SMS (kwa simu ya mkononi)",
-        "generate_gps": "Tengeneza Kuratibu za GPS",
+        "gps_coordinates": "Kuratibu za GPS",
         "read_aloud": "Soma Mapendekezo kwa Sauti",
         "low": "chini",
         "adequate": "ya kutosha",
         "high": "juu",
         "unknown": "haijulikani",
+        "error_message": "Imeshindwa kuchakata ombi lako. Tafadhali jaribu tena baadaye au wasiliana na usaidizi.",
         "recommendations": {
             "nitrogen_low": "Tumia kg 100/eka ya N:P:K 23:23:0 wakati wa kupanda. Ongeza kg 50/eka ya CAN juu.",
             "phosphorus_low": "Tumia kg 75/eka ya triple superphosphate (TSP) wakati wa kupanda.",
@@ -231,8 +224,9 @@ translations = {
     },
     "Kikuyu": {
         "welcome": "Nĩ wega, mũrĩmi! Õna dashboard ĩno kũruta maũndũ mwerũ ma shamba yaku.",
-        "instructions": "Andika mahali wĩ, mũhĩrĩga wa mbego, na maũndũ o wothe marĩkaga kũoneka kũruta ndeto ya mweri.",
+        "instructions": "Cagũra kaũnti yaku, wadi, mũhĩrĩga wa mbego, na maũndũ o wothe marĩkaga kũoneka kũruta ndeto ya mweri.",
         "select_county": "Cagũra Kaũnti Yaku",
+        "select_ward": "Cagũra Wadi Yaku",
         "select_crop": "Cagũra Mũhĩrĩga wa Mbego",
         "select_symptoms": "Cagũra Maũndũ Marĩkaga Kũoneka (kama arĩ o na wothe)",
         "yellowing_leaves": "Mahuti marĩa marĩkaga kũmũũra",
@@ -242,14 +236,15 @@ translations = {
         "get_recommendations": "Ruta Maũndũ Mwerũ",
         "nitrogen_status": "Ũhoro wa Nitrogen",
         "phosphorus_status": "Ũhoro wa Phosphorus",
-        "recommendation": "Maũndũ mwerũ ma {crop} mweri {county}",
+        "recommendation": "Maũndũ mwerũ ma {crop} mweri {county}, {ward}",
         "sms_output": "Toleo rĩa SMS (rĩa simu)",
-        "generate_gps": "Tengeneza GPS Coordinates",
+        "gps_coordinates": "GPS Coordinates",
         "read_aloud": "Soma Maũndũ Mwerũ na Rũthi",
         "low": "hĩnĩ",
         "adequate": "yakinyaga",
         "high": "mũnene",
         "unknown": "itangĩhũthĩka",
+        "error_message": "Nĩ shida kũhithia maũndũ maku. Tafadhalĩ kĩra tena kana ũhũre support.",
         "recommendations": {
             "nitrogen_low": "Tumia kg 100/eka ya N:P:K 23:23:0 rĩngĩ wa kũrĩma. Ongeza kg 50/eka ya CAN rĩngĩ rĩa kũruta.",
             "phosphorus_low": "Tumia kg 75/eka ya triple superphosphate (TSP) rĩngĩ wa kũrĩma.",
@@ -258,6 +253,22 @@ translations = {
             "none": "Nĩ ndeto cia pekee itarĩ."
         }
     }
+}
+
+# County to ward mapping (simplified example based on available data)
+county_ward_mapping = {
+    "Kajiado": ["Isinya", "Kajiado Central", "Ngong", "Loitokitok"],
+    "Narok": ["Narok North", "Narok South", "Olokurto", "Melili"],
+    "Nakuru": ["Nakuru East", "Nakuru West", "Rongai", "Molo"],
+    "Kiambu": ["Kiambaa", "Kikuyu", "Limuru", "Thika"],
+    "Machakos": ["Machakos Town", "Mavoko", "Kangundo", "Matungulu"],
+    "Murang'a": ["Kigumo", "Kangema", "Mathioya", "Murang'a South"],
+    "Nyeri": ["Mathira", "Kieni", "Othaya", "Nyeri Town"],
+    "Kitui": ["Kitui Central", "Kitui West", "Mwingi North", "Mwingi West"],
+    "Embu": ["Manyatta", "Runyenjes", "Mbeere South", "Mbeere North"],
+    "Meru": ["Imenti Central", "Imenti North", "Tigania East", "Tigania West"],
+    "Tharaka Nithi": ["Chuka", "Tharaka", "Igambang'ombe", "Maara"],
+    "Laikipia": ["Laikipia West", "Laikipia East", "Nanyuki", "Nyahururu"]
 }
 
 # Generate recommendations
@@ -302,31 +313,27 @@ def match_recommendations(generated, dataset):
                 return True
     return False
 
-# Simulate GPS coordinates for Kenyan counties
-def generate_gps(county):
-    # Approximate GPS ranges for Kenyan counties (latitude, longitude)
-    county_gps_ranges = {
-        "Kajiado": {"lat": (-2.0, -1.5), "lon": (36.5, 37.0)},
-        "Narok": {"lat": (-1.5, -0.5), "lon": (35.5, 36.0)},
-        "Nakuru": {"lat": (-0.5, 0.0), "lon": (36.0, 36.5)},
-        "Kiambu": {"lat": (-1.2, -0.8), "lon": (36.7, 37.0)},
-        "Machakos": {"lat": (-1.8, -1.3), "lon": (37.0, 37.5)},
-        "Murang'a": {"lat": (-0.9, -0.5), "lon": (37.0, 37.3)},
-        "Nyeri": {"lat": (-0.5, 0.0), "lon": (36.8, 37.2)},
-        "Kitui": {"lat": (-2.0, -1.0), "lon": (37.8, 38.5)},
-        "Embu": {"lat": (-0.7, -0.3), "lon": (37.4, 37.8)},
-        "Meru": {"lat": (-0.1, 0.5), "lon": (37.5, 38.0)},
-        "Tharaka Nithi": {"lat": (-0.4, 0.0), "lon": (37.7, 38.0)},
-        "Laikipia": {"lat": (0.0, 0.5), "lon": (36.5, 37.0)},
-        "Unknown": {"lat": (-1.0, 1.0), "lon": (36.0, 38.0)}
+# Simulate GPS coordinates for Kenyan wards
+def generate_gps(county, ward):
+    ward_gps_ranges = {
+        ("Kajiado", "Isinya"): {"lat": (-1.9, -1.7), "lon": (36.7, 36.9)},
+        ("Kajiado", "Kajiado Central"): {"lat": (-1.8, -1.6), "lon": (36.8, 37.0)},
+        ("Kajiado", "Ngong"): {"lat": (-1.4, -1.2), "lon": (36.6, 36.8)},
+        ("Kajiado", "Loitokitok"): {"lat": (-2.8, -2.6), "lon": (37.3, 37.5)},
+        ("Narok", "Narok North"): {"lat": (-1.0, -0.8), "lon": (35.7, 35.9)},
+        ("Narok", "Narok South"): {"lat": (-1.5, -1.3), "lon": (35.6, 35.8)},
+        ("Nakuru", "Nakuru East"): {"lat": (-0.3, -0.1), "lon": (36.1, 36.3)},
+        ("Kiambu", "Kiambaa"): {"lat": (-1.1, -0.9), "lon": (36.7, 36.9)},
+        ("Murang'a", "Kigumo"): {"lat": (-0.8, -0.6), "lon": (37.0, 37.2)},
+        ("Nyeri", "Mathira"): {"lat": (-0.4, -0.2), "lon": (37.0, 37.2)}
     }
-    ranges = county_gps_ranges.get(county, county_gps_ranges["Unknown"])
+    ranges = ward_gps_ranges.get((county, ward), {"lat": (-1.0, 1.0), "lon": (36.0, 38.0)})
     lat = np.random.uniform(ranges["lat"][0], ranges["lat"][1])
     lon = np.random.uniform(ranges["lon"][0], ranges["lon"][1])
     return lat, lon
 
 # Farmer-specific recommendation logic
-def generate_farmer_recommendations(county, crop_type, symptoms, df, scaler, selector, best_rf_nitrogen, rf_phosphorus, features, language="English"):
+def generate_farmer_recommendations(county, ward, crop_type, symptoms, df, scaler, selector, best_rf_nitrogen, rf_phosphorus, features, language="English"):
     try:
         if 'county' in df.columns and county in df['county'].values:
             county_data = df[df['county'] == county][features].mean().to_dict()
@@ -367,11 +374,10 @@ def generate_farmer_recommendations(county, crop_type, symptoms, df, scaler, sel
         input_df['phosphorus_class_str'] = translations["English"]["low"] if phosphorus_pred == 0 else translations["English"]["adequate"] if phosphorus_pred == 1 else translations["English"]["high"] if phosphorus_pred == 2 else translations["English"]["unknown"]
         recommendation = generate_recommendations(input_df.iloc[0], language)
 
-        sms_output = f"SoilSync AI: {translations[language]['recommendation'].format(crop=crop_type, county=county)}, {recommendation.replace('; ', '. ')}"
+        sms_output = f"SoilSync AI: {translations[language]['recommendation'].format(crop=crop_type, county=county, ward=ward)}, {recommendation.replace('; ', '. ')}"
 
         return nitrogen_class, phosphorus_class, recommendation, sms_output
     except Exception as e:
-        st.error(f"Error generating farmer recommendations: {str(e)}")
         return translations[language]["unknown"], translations[language]["unknown"], translations[language]["recommendations"]["none"], ""
 
 # Text-to-speech function
@@ -383,7 +389,6 @@ def text_to_speech(text, language_code):
         audio_file.seek(0)
         return audio_file
     except Exception as e:
-        st.error(f"Error generating audio: {str(e)}")
         return None
 
 # Streamlit UI
@@ -411,11 +416,10 @@ else:
                             ["Home", "Data Upload & Training", "Predictions & Recommendations", 
                              "Field Trials", "Visualizations"])
 
-# Load dataset for farmer interface
+# Load dataset and train models for farmer interface (silently)
 if user_type.startswith("Farmer"):
     df, features, target_nitrogen, target_phosphorus = load_and_preprocess_data(source="github")
     if df is not None and (not hasattr(st.session_state, 'df') or st.session_state.df is None):
-        # Train models automatically for farmer interface
         (best_rf_nitrogen, rf_phosphorus, scaler, selector, feature_columns, 
          nitrogen_accuracy, phosphorus_accuracy, avg_accuracy, cv_scores, 
          selected_features) = train_models(df, features, target_nitrogen, target_phosphorus)
@@ -436,14 +440,18 @@ if user_type.startswith("Farmer") and page == "Farmer Dashboard":
     st.markdown(translations[language]["instructions"])
 
     if 'best_rf_nitrogen' not in st.session_state or 'df' not in st.session_state or st.session_state.df is None:
-        st.error("Unable to load data or train models. Please ensure the dataset is available and try again.")
+        st.error(translations[language]["error_message"])
     else:
-        st.subheader(f"{translations[language]['select_county']}")
         with st.form("farmer_input_form"):
-            # Dynamically populate county dropdown from dataset
+            st.subheader(translations[language]["select_county"])
             county_options = sorted(st.session_state['df']['county'].unique())
             county = st.selectbox(translations[language]["select_county"], 
                                   options=county_options if county_options else ["Unknown"])
+
+            st.subheader(translations[language]["select_ward"])
+            ward_options = county_ward_mapping.get(county, ["Unknown"])
+            ward = st.selectbox(translations[language]["select_ward"], options=ward_options)
+
             crop_type = st.selectbox(translations[language]["select_crop"], 
                                      options=["Maize / Mahindi / Mũgĩta", 
                                               "Beans / Maharagwe / Mĩanga", 
@@ -461,30 +469,26 @@ if user_type.startswith("Farmer") and page == "Farmer Dashboard":
         if submit_button:
             with st.spinner("Generating recommendations..."):
                 nitrogen_class, phosphorus_class, recommendation, sms_output = generate_farmer_recommendations(
-                    county, crop_type.split(" / ")[0], symptoms, st.session_state['df'], st.session_state['scaler'],
+                    county, ward, crop_type.split(" / ")[0], symptoms, st.session_state['df'], st.session_state['scaler'],
                     st.session_state['selector'], st.session_state['best_rf_nitrogen'], 
                     st.session_state['rf_phosphorus'], st.session_state['features'], language
                 )
+                lat, lon = generate_gps(county, ward)
                 st.success("Recommendations generated!")
                 st.write(f"**{translations[language]['nitrogen_status']}**: {nitrogen_class}")
                 st.write(f"**{translations[language]['phosphorus_status']}**: {phosphorus_class}")
-                st.write(f"**{translations[language]['recommendation'].format(crop=crop_type.split(' / ')[0], county=county)}**: {recommendation}")
+                st.write(f"**{translations[language]['recommendation'].format(crop=crop_type.split(' / ')[0], county=county, ward=ward)}**: {recommendation}")
                 st.write(f"**{translations[language]['sms_output']}**:")
                 st.code(sms_output)
-
-                # GPS Generator
-                if st.button(translations[language]["generate_gps"]):
-                    lat, lon = generate_gps(county)
-                    st.write(f"**GPS Coordinates for {county}**: Latitude: {lat:.6f}, Longitude: {lon:.6f}")
+                st.write(f"**{translations[language]['gps_coordinates']}**: Latitude: {lat:.6f}, Longitude: {lon:.6f}")
 
                 # Read Aloud
                 if st.button(translations[language]["read_aloud"]):
-                    lang_code = {"English": "en", "Kiswahili": "sw", "Kikuyu": "en"}[language]  # Kikuyu uses English TTS as fallback
+                    lang_code = {"English": "en", "Kiswahili": "sw", "Kikuyu": "en"}[language]
                     audio_file = text_to_speech(sms_output, lang_code)
                     if audio_file:
                         audio_bytes = audio_file.read()
                         st.audio(audio_bytes, format="audio/mp3")
-                        # Provide download option
                         b64 = base64.b64encode(audio_bytes).decode()
                         href = f'<a href="data:audio/mp3;base64,{b64}" download="recommendation.mp3">Download Audio</a>'
                         st.markdown(href, unsafe_allow_html=True)
